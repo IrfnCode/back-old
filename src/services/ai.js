@@ -2,11 +2,23 @@ import fetch from 'node-fetch';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 // Pointing to data relative to where this file will be (src/services/ai.js)
 const DB_PATH = path.join(__dirname, '../../data/database.sqlite');
+
+// Ensure database directory exists
+const DB_DIR = path.dirname(DB_PATH);
+if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+// Ensure database file exists (even if empty) so readonly mode doesn't throw
+if (!fs.existsSync(DB_PATH)) {
+    fs.writeFileSync(DB_PATH, '');
+}
 
 // For regular read-only queries
 const db = new Database(DB_PATH, { readonly: true });
