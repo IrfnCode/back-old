@@ -1,0 +1,16 @@
+node_modules/
+.env
+config/credentials.json
+data/*
+!data/.gitkeep
+*.log
+.DS_Store
+dist/
+build/
+browser-data/
+*.zip
+*.tar.gz
+*.png
+*.html
+*.txt
+!*.example.*
