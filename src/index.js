@@ -286,8 +286,8 @@ app.post('/api/telegram/test', async (req, res) => {
     const config = getConfig();
 
     // Select chat ID based on type, fallback to main chatId if datekChatId not set
-    let chatId = type === 'datek' ? config.datekChatId : config.telegramChatId;
-    if (type === 'datek' && !chatId) chatId = config.telegramChatId;
+    let chatId = type === 'datek' ? (config.datekChatId || process.env.DATEK_CHAT_ID) : (config.telegramChatId || process.env.TELEGRAM_CHAT_ID);
+    if (type === 'datek' && !chatId) chatId = config.telegramChatId || process.env.TELEGRAM_CHAT_ID;
 
     if (!chatId) {
       return res.status(400).json({ error: `Chat ID not configured for ${type}` });
@@ -2051,10 +2051,12 @@ server.listen(PORT, '0.0.0.0', () => {
 
   try {
     const config = getConfig();
-    console.log(`Debug Init: Bot Tokens present? Gangguan=${!!config.telegramBotToken}, Datek=${!!config.datekBotToken}`);
+    const tokenGangguan = config.telegramBotToken || process.env.TELEGRAM_BOT_TOKEN;
+    const tokenDatek = config.datekBotToken || process.env.DATEK_BOT_TOKEN;
+    console.log(`Debug Init: Bot Tokens present? Gangguan=${!!tokenGangguan}, Datek=${!!tokenDatek}`);
 
-    initTelegramBots(config.telegramBotToken, config.datekBotToken);
-    console.log('📱 Telegram bots initialized from startup config');
+    initTelegramBots(tokenGangguan, tokenDatek);
+    console.log('📱 Telegram bots initialized');
 
 
     if (config.autoSendActive === 'true') {

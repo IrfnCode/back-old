@@ -385,7 +385,7 @@ export async function sendWorkOrderWithRotation(workOrder) {
     }
 
     const config = getConfig();
-    const chatId = config.telegramChatId;
+    const chatId = config.telegramChatId || process.env.TELEGRAM_CHAT_ID;
     if (!chatId) {
         console.log(`Debug Auto-Send: WO ${orderId} skipped - No Telegram Chat ID config`);
         return false;
