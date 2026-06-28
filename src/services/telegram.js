@@ -16,12 +16,34 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
     // 1. Initialize Gangguan Bot
     if (tokenGangguan) {
         try {
-            if (botGangguan) botGangguan.stopPolling();
-            botGangguan = new TelegramBot(tokenGangguan, { polling: true });
+            if (botGangguan) {
+                botGangguan.stopPolling().catch(() => {});
+            }
+            botGangguan = new TelegramBot(tokenGangguan, { polling: false });
+
+            // Add polling error listener
+            botGangguan.on('polling_error', (error) => {
+                console.error('❌ Gangguan Bot Polling Error:', error.message || error);
+            });
 
             // Register Gangguan Handlers
             registerGangguanHandlers(botGangguan);
-            console.log('✅ Gangguan Bot initialized');
+
+            // Delete webhook first to avoid 409 Conflict with polling, then start polling
+            botGangguan.deleteWebhook()
+                .then(() => {
+                    console.log('✅ Webhook deleted for Gangguan Bot, starting polling...');
+                    return botGangguan.startPolling();
+                })
+                .then(() => {
+                    console.log('✅ Gangguan Bot initialized and polling started');
+                })
+                .catch((error) => {
+                    console.error('⚠️ Gangguan Bot deleteWebhook failed, starting polling anyway:', error.message);
+                    botGangguan.startPolling().catch(err => {
+                        console.error('❌ Failed to start polling for Gangguan Bot:', err.message);
+                    });
+                });
         } catch (error) {
             console.error('❌ Failed to init Gangguan Bot:', error.message);
         }
@@ -30,12 +52,34 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
     // 2. Initialize Datek Bot
     if (tokenDatek) {
         try {
-            if (botDatek) botDatek.stopPolling();
-            botDatek = new TelegramBot(tokenDatek, { polling: true });
+            if (botDatek) {
+                botDatek.stopPolling().catch(() => {});
+            }
+            botDatek = new TelegramBot(tokenDatek, { polling: false });
+
+            // Add polling error listener
+            botDatek.on('polling_error', (error) => {
+                console.error('❌ Datek Bot Polling Error:', error.message || error);
+            });
 
             // Register Datek Handlers
             registerDatekBotHandlers(botDatek);
-            console.log('✅ Datek Bot initialized');
+
+            // Delete webhook first to avoid 409 Conflict with polling, then start polling
+            botDatek.deleteWebhook()
+                .then(() => {
+                    console.log('✅ Webhook deleted for Datek Bot, starting polling...');
+                    return botDatek.startPolling();
+                })
+                .then(() => {
+                    console.log('✅ Datek Bot initialized and polling started');
+                })
+                .catch((error) => {
+                    console.error('⚠️ Datek Bot deleteWebhook failed, starting polling anyway:', error.message);
+                    botDatek.startPolling().catch(err => {
+                        console.error('❌ Failed to start polling for Datek Bot:', err.message);
+                    });
+                });
         } catch (error) {
             console.error('❌ Failed to init Datek Bot:', error.message);
         }
