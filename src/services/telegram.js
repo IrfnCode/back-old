@@ -30,7 +30,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
             registerGangguanHandlers(botGangguan);
 
             // Delete webhook first to avoid 409 Conflict with polling, then start polling
-            botGangguan.deleteWebhook()
+            botGangguan.deleteWebHook()
                 .then(() => {
                     console.log('✅ Webhook deleted for Gangguan Bot, starting polling...');
                     return botGangguan.startPolling();
@@ -66,7 +66,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
             registerDatekBotHandlers(botDatek);
 
             // Delete webhook first to avoid 409 Conflict with polling, then start polling
-            botDatek.deleteWebhook()
+            botDatek.deleteWebHook()
                 .then(() => {
                     console.log('✅ Webhook deleted for Datek Bot, starting polling...');
                     return botDatek.startPolling();
