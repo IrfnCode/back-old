@@ -1400,7 +1400,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     startRowIndex: 0,
                     endRowIndex: 2000,
                     startColumnIndex: 0,
-                    endColumnIndex: colWidth
+                    endColumnIndex: 40
                 }
             }
         });
