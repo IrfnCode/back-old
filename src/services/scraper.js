@@ -288,6 +288,7 @@ function parseWorkOrders(html, options = {}) {
         let sourceTicket = 'UNKNOWN';
         let deviceName = null;
         let rkInformation = null;
+        let serviceNo = null;
         let reportedBy = null;
         let lapul = '-';
         let actualSolution = '-';
