@@ -362,12 +362,38 @@ Chat ID Anda: \`${chatId}\`
             pastDate.setDate(now.getDate() - 3); // 3 days range
             const dateFrom = getWIBString(pastDate) + ' 00:00';
 
-            // Endpoint khusus untuk /tiketaktif sesuai permintaan dengan filter tanggal dinamis dan workzone terupdate
-            const activeTicketsUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateTo)}&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CTUB%2CKIJ%2CTER%2CRAI%2CDBS&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+            // Endpoint khusus untuk /tiketaktif sesuai permintaan dengan filter tanggal dinamis, workzone terupdate, dan page size dibatasi ke 30 agar tidak overlimit
+            const activeTicketsUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=30&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateTo)}&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CTUB%2CKIJ%2CTER%2CRAI%2CDBS&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
 
             // Panggil scrapeOnce dengan skipConfigOverrides: true agar tidak tertimpa filter status/workzone dari konfigurasi umum
-            const result = await scrapeOnce(activeTicketsUrl, null, { skipConfigOverrides: true });
-            const activeTickets = (result.data || []).filter(wo => wo.sourceTicket === 'CUSTOMER');
+            const resultP1 = await scrapeOnce(activeTicketsUrl, null, { skipConfigOverrides: true });
+            let tickets = resultP1.data || [];
+
+            // Jika jumlah tiket >= 30, kemungkinan besar ada halaman ke-2. Scrap halaman 2.
+            if (tickets.length >= 30) {
+                try {
+                    const activeTicketsUrlP2 = activeTicketsUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
+                    console.log('📄 Page 1 full (30+ tickets), scraping Page 2...');
+                    const resultP2 = await scrapeOnce(activeTicketsUrlP2, null, { skipConfigOverrides: true });
+                    const ticketsP2 = resultP2.data || [];
+                    console.log(`📄 Found ${ticketsP2.length} tickets on Page 2`);
+                    tickets = [...tickets, ...ticketsP2];
+                } catch (p2Err) {
+                    console.error('⚠️ Failed to scrape page 2:', p2Err.message);
+                }
+            }
+
+            // Filter duplikat (menggunakan Set untuk orderId) dan saring hanya sourceTicket === CUSTOMER
+            const seenIds = new Set();
+            const activeTickets = [];
+            for (const wo of tickets) {
+                if (!seenIds.has(wo.orderId)) {
+                    seenIds.add(wo.orderId);
+                    if (wo.sourceTicket === 'CUSTOMER') {
+                        activeTickets.push(wo);
+                    }
+                }
+            }
 
             const day = String(now.getDate()).padStart(2, '0');
             const month = String(now.getMonth() + 1).padStart(2, '0');
