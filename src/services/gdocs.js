@@ -943,8 +943,11 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const values = [];
         const formattingRequests = [];
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
-        const colWidth = headers.length; // 8
+        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
+        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
+        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
+        
+        const colWidth = regHeaders.length; // 8
         const spacing = 1; // 1 empty column separator
 
         // Column indexes
@@ -1010,9 +1013,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
         // --- ROW 1: HEADERS ROW ---
         const row1 = [];
-        setRowCells(row1, regColStart, headers);
-        setRowCells(row1, sqmColStart, headers);
-        setRowCells(row1, unspecColStart, headers);
+        setRowCells(row1, regColStart, regHeaders);
+        setRowCells(row1, sqmColStart, sqmHeaders);
+        setRowCells(row1, unspecColStart, unspecHeaders);
         values.push(row1);
 
         const addHeaderFormat = (colStart, headerColor) => {
@@ -1041,11 +1044,12 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         addHeaderFormat(unspecColStart, { red: 0.83, green: 0.33, blue: 0.0 }); // Warm Bronze/Amber (#D35400)
 
         // --- DATA ROWS ---
-        const formatRows = (tickets) => {
+        const formatRows = (tickets, isSqm = false) => {
             return tickets.map((wo, index) => {
                 const orderId = wo.orderId || wo.order_id || '-';
                 const serviceNo = wo.serviceNo || wo.service_no || '-';
                 const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
+                const summaryVal = wo.summary || wo.description || '-';
                 const custType = wo.customerType || wo.customer_type || 'REGULER';
                 const gaul = extractGaulFromSummary(wo.summary || wo.description || '');
                 const wz = wo.workzone || '-';
@@ -1055,7 +1059,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     index + 1,
                     orderId,
                     serviceNo,
-                    ttr,
+                    isSqm ? summaryVal : ttr,
                     custType,
                     gaul,
                     wz,
@@ -1064,9 +1068,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             });
         };
 
-        const regData = formatRows(regulerTickets);
-        const sqmData = formatRows(sqmTickets);
-        const unspecData = formatRows(unspecTickets);
+        const regData = formatRows(regulerTickets, false);
+        const sqmData = formatRows(sqmTickets, true);
+        const unspecData = formatRows(unspecTickets, false);
 
         // Determine data rows range
         const regRowMax = regData.length > 0 ? regData.length : 1;
@@ -1179,7 +1183,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const colWidths = [
             45,  125, 115, 115, 115, 145, 95, 135, // Reguler (0-7)
             30,                                    // Spacing separator (8)
-            45,  125, 115, 115, 115, 145, 95, 135, // SQM (9-16)
+            45,  125, 115, 280, 115, 145, 95, 135, // SQM (9-16) - SUMMARY (index 12) is widened to 280px
             30,                                    // Spacing separator (17)
             45,  125, 115, 115, 115, 145, 95, 135  // UNSPEC (18-25)
         ];
