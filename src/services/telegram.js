@@ -502,8 +502,8 @@ Chat ID Anda: \`${chatId}\`
                 return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             };
  
-            // Wrap the block content inside pre and code tag with class language-python
-            message += `<pre><code class="language-python">${escapeHtml(blockContent)}</code></pre>\n\n`;
+            // Wrap the block content inside pre and code tag with class language-go
+            message += `<pre><code class="language-go">${escapeHtml(blockContent)}</code></pre>\n\n`;
             message += "silahkan /info INCXXX untuk melihat Summary Ticket nya, Terimakasih";
  
             await bot.editMessageText(message, {
