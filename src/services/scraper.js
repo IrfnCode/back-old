@@ -11,6 +11,57 @@ let isScrapingActive = false;
 let isScrapingNow = false;
 let ownBrowser = null;
 let ownPage = null;
+let scrapSheetInterval = null;
+let scrapSheetIntervalMs = 0;
+let scrapSheetStartedAt = null;
+
+/**
+ * Get sheet scraping schedule state
+ */
+export function getScrapSheetStatus() {
+    return {
+        running: scrapSheetInterval !== null,
+        intervalMs: scrapSheetIntervalMs,
+        startedAt: scrapSheetStartedAt
+    };
+}
+
+/**
+ * Stop the automatic sheet scraping schedule
+ */
+export function stopScrapSheet() {
+    if (scrapSheetInterval) {
+        clearInterval(scrapSheetInterval);
+        scrapSheetInterval = null;
+        scrapSheetIntervalMs = 0;
+        scrapSheetStartedAt = null;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Start the automatic sheet scraping schedule
+ * @param {Function} runFn - async function that does the actual scrape+export
+ * @param {number} intervalMs - interval in milliseconds
+ */
+export function startScrapSheet(runFn, intervalMs) {
+    // Stop any existing schedule first
+    stopScrapSheet();
+
+    scrapSheetIntervalMs = intervalMs;
+    scrapSheetStartedAt = new Date();
+
+    // Run immediately on start, then on interval
+    runFn().catch(err => console.error('❌ [ScrapSheet] Initial run error:', err.message));
+
+    scrapSheetInterval = setInterval(() => {
+        runFn().catch(err => console.error('❌ [ScrapSheet] Interval run error:', err.message));
+    }, intervalMs);
+
+    console.log(`⏰ [ScrapSheet] Auto-schedule started every ${intervalMs / 60000} minutes`);
+    return true;
+}
 
 // HVC Tier expiry hours configuration
 // HVC Tier expiry hours configuration

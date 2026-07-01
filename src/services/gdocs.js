@@ -959,7 +959,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     },
                     cell: {
                         userEnteredFormat: {
-                            textFormat: { bold: true, fontSize: 13, color: { red: 0.1, green: 0.1, blue: 0.1 } }
+                            textFormat: { bold: true, fontSize: 13, foregroundColor: { red: 0.1, green: 0.1, blue: 0.1 } }
                         }
                     },
                     fields: 'userEnteredFormat.textFormat'
@@ -981,7 +981,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     cell: {
                         userEnteredFormat: {
                             backgroundColor: headerColor,
-                            textFormat: { bold: true, color: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 10 },
+                            textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 10 },
                             horizontalAlignment: 'CENTER',
                             verticalAlignment: 'MIDDLE'
                         }
@@ -1004,7 +1004,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         },
                         cell: {
                             userEnteredFormat: {
-                                textFormat: { italic: true, color: { red: 0.5, green: 0.5, blue: 0.5 } }
+                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
                             }
                         },
                         fields: 'userEnteredFormat.textFormat'
