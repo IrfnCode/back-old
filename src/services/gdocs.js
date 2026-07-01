@@ -943,6 +943,18 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const values = [];
         const formattingRequests = [];
 
+        // Reset any existing merged cells to prevent overlap errors
+        formattingRequests.push({
+            unmergeCells: {
+                range: {
+                    startRowIndex: 0,
+                    endRowIndex: 1000,
+                    startColumnIndex: 0,
+                    endColumnIndex: 40
+                }
+            }
+        });
+
         const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
         const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
         const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
@@ -1210,7 +1222,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         try {
             await sheets.spreadsheets.values.clear({
                 spreadsheetId,
-                range: `${sheetName}!A:Z`
+                range: `${sheetName}!A:AZ`
             });
         } catch (e) {
             console.log(`Note: Could not clear sheet ${sheetName}`);
@@ -1235,6 +1247,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 }
                 if (req.mergeCells && req.mergeCells.range) {
                     req.mergeCells.range.sheetId = sheetId;
+                }
+                if (req.unmergeCells && req.unmergeCells.range) {
+                    req.unmergeCells.range.sheetId = sheetId;
                 }
                 if (req.updateDimensionProperties && req.updateDimensionProperties.range) {
                     req.updateDimensionProperties.range.sheetId = sheetId;
