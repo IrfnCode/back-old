@@ -934,6 +934,10 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         const workOrders = parseWorkOrders(html);
 
         console.log(`📋 Found ${workOrders.length} work orders`);
+        
+        if (workOrders.length === 0) {
+            console.log(`🔍 [DEBUG] HTML Snippet (first 1500 chars):`, html.substring(0, 1500).replace(/\s+/g, ' '));
+        }
 
         if (workOrders.length > 0) {
             console.log(`📌 Sample work order:`, JSON.stringify(workOrders[0], null, 2));
