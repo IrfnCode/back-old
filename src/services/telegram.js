@@ -458,6 +458,9 @@ Chat ID Anda: \`${chatId}\`
             } else {
                 sortedWzs.forEach((wz, groupIndex) => {
                     const ticketsInWz = groups[wz];
+                    if (groupIndex > 0) {
+                        blockContent += '\n'; // Extra spacing before subsequent workzones
+                    }
                     blockContent += `=== ${wz} (${ticketsInWz.length} Ticket) ===\n`;
                     
                     ticketsInWz.forEach((wo, index) => {
