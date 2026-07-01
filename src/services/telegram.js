@@ -407,13 +407,14 @@ Chat ID: <code>${chatId}</code>
     // HELPER: build URLs and run scrape+export, return result summary
     // ─────────────────────────────────────────────────────────────
     const runScrapSheet = async () => {
-        const { exportProactiveToSpreadsheet } = await import('./gdocs.js');
-        const { scrapeProactiveAndReguler } = await import('./scraper.js');
+        const { exportProactiveToSpreadsheet, exportClosedToSpreadsheet } = await import('./gdocs.js');
+        const { scrapeProactiveAndReguler, scrapeClosedTickets } = await import('./scraper.js');
 
         const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
-        const sheetName = 'DATA TIKET';
+        const openSheetName = 'DATA TIKET OPEN';
+        const closedSheetName = 'DATA TIKET CLOSE';
 
-        // Build dynamic WIB date range (2 days ago → today)
+        // Build dynamic WIB date range (2 days ago → today) for active
         const toWIBDate = (d) => {
             const wib = new Date(d.getTime() + 7 * 3600000);
             const y = wib.getUTCFullYear();
@@ -430,10 +431,29 @@ Chat ID: <code>${chatId}</code>
 
         const proactiveUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/inboxTicketProactive?d-6878233-p=1&d-6878233-ps=100&d-6878233-fn_reported_date_filter=&d-6878233-fn_reported_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_C_OWNER_GROUP=&d-6878233-fn_C_OWNER=&d-6878233-fn_C_REPORTED_PRIORITY=&d-6878233-fn_C_SOURCE_TICKET=&d-6878233-fn_C_EXTERNAL_TICKETID=&d-6878233-fn_C_CHANNEL=&d-6878233-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-6878233-fn_C_CUSTOMER_TYPE=&d-6878233-fn_C_SERVICE_NO=&d-6878233-fn_C_SERVICE_TYPE=&d-6878233-fn_C_SERVICE_ID=&d-6878233-fn_C_SLG=&d-6878233-fn_C_KODE_PRODUK=&d-6878233-fn_DATEMODIFIED=&d-6878233-fn_C_CLOSED_BY=&d-6878233-fn_C_WORK_ZONE=TPI%2CTUB%2CKIJ%2CKMS%2CPYT%2CDBS%2CTER%2CRAI&d-6878233-fn_C_WITEL=&d-6878233-fn_C_REGION=&d-6878233-fn_C_ID_TICKET=&d-6878233-fn_C_ACTUAL_SOLUTION=&d-6878233-fn_C_CLASSIFICATION_PATH=&d-6878233-fn_C_INCIDENT_DOMAIN=&d-6878233-fn_C_TICKET_STATUS=&d-6878233-fn_C_PERANGKAT=&d-6878233-fn_C_DESCRIPTION_ASSIGMENT=&d-6878233-fn_C_CLASSIFICATION_CATEGORY=&d-6878233-fn_C_REALM=&d-6878233-fn_C_PIPE_NAME=&d-6878233-fn_C_CUSTOMER_ID=&d-6878233-fn_C_RELATED_TO_GAMAS=&d-6878233-fn_C_TICKET_ID_GAMAS=&d-6878233-fn_C_GUARANTE_STATUS=&d-6878233-fn_C_DESCRIPTION_CUSTOMERID=`;
 
-        const data = await scrapeProactiveAndReguler(regulerUrl, proactiveUrl);
-        await exportProactiveToSpreadsheet(spreadsheetId, sheetName, data.reguler, data.sqm, data.unspec);
+        // Build dynamic WIB date range (1 day ago → today) for closed tickets
+        const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+        const repFrom = toWIBDate(yesterday) + ' 00:00';
+        const repTo   = toWIBDate(now)  + ' 23:59';
+        const statFrom = toWIBDate(now) + ' 00:00';
+        const statTo   = toWIBDate(now)  + ' 23:59';
 
-        return { ...data, spreadsheetId };
+        const closedUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
+
+        const openData = await scrapeProactiveAndReguler(regulerUrl, proactiveUrl);
+        const closedData = await scrapeClosedTickets(closedUrl);
+
+        await exportProactiveToSpreadsheet(spreadsheetId, openSheetName, openData.reguler, openData.sqm, openData.unspec);
+        const exportClosedRes = await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, closedData);
+
+        return {
+            reguler: openData.reguler,
+            sqm: openData.sqm,
+            unspec: openData.unspec,
+            closedCount: closedData.length,
+            totalClosedCount: exportClosedRes.totalClosedCount,
+            spreadsheetId
+        };
     };
 
     // ─────────────────────────────────────────────────────────────
@@ -447,10 +467,11 @@ Chat ID: <code>${chatId}</code>
             const link = `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}`;
             await bot.editMessageText(
                 `📊 <b>Sync Sukses!</b>\n\n` +
-                `🔹 <b>Reguler:</b> ${data.reguler.length} tiket\n` +
-                `🔸 <b>SQM:</b> ${data.sqm.length} tiket\n` +
-                `🔹 <b>UNSPEC:</b> ${data.unspec.length} tiket\n\n` +
-                `📝 Sheet: <b>DATA TIKET</b>\n` +
+                `🔹 <b>Reguler (Open):</b> ${data.reguler.length} tiket\n` +
+                `🔸 <b>SQM (Open):</b> ${data.sqm.length} tiket\n` +
+                `🔹 <b>UNSPEC (Open):</b> ${data.unspec.length} tiket\n` +
+                `✅ <b>Closed Baru:</b> ${data.closedCount} tiket (Total di sheet: ${data.totalClosedCount})\n\n` +
+                `📝 Sheet: <b>DATA TIKET OPEN</b> &amp; <b>DATA TIKET CLOSE</b>\n` +
                 `🔗 <a href="${link}">Buka Google Spreadsheet</a>`,
                 { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML', disable_web_page_preview: true }
             );
@@ -486,7 +507,8 @@ Chat ID: <code>${chatId}</code>
                 // Notify silently on auto runs
                 await bot.sendMessage(chatId,
                     `🔄 <b>Auto ScrapSheet</b> — ${now}\n` +
-                    `✅ Reguler: ${data.reguler.length} | SQM: ${data.sqm.length} | UNSPEC: ${data.unspec.length}\n` +
+                    `✅ Reguler (Open): ${data.reguler.length} | SQM: ${data.sqm.length} | UNSPEC: ${data.unspec.length}\n` +
+                    `✅ Closed Baru: ${data.closedCount} (Total: ${data.totalClosedCount})\n` +
                     `🔗 <a href="${link}">Spreadsheet</a>`,
                     { parse_mode: 'HTML', disable_web_page_preview: true });
             } catch (err) {

@@ -154,7 +154,7 @@ function parseTicketRow(rowText) {
 }
 
 // Parse work orders from HTML
-function parseWorkOrders(html) {
+function parseWorkOrders(html, options = {}) {
     const $ = cheerio.load(html);
     const workOrders = [];
     const seenIds = new Set();
@@ -186,6 +186,10 @@ function parseWorkOrders(html) {
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
                 if (text.includes('lapul')) columnMap.lapul = i;
+                if (text.includes('actual') && text.includes('solution')) columnMap.actualSolution = i;
+                if (text.includes('solution') && !text.includes('actual')) columnMap.actualSolution = i;
+                if (text.includes('technician')) columnMap.technician = i;
+                if (text.includes('closed') && text.includes('by')) columnMap.technician = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
@@ -284,9 +288,10 @@ function parseWorkOrders(html) {
         let sourceTicket = 'UNKNOWN';
         let deviceName = null;
         let rkInformation = null;
-        let serviceNo = null;
         let reportedBy = null;
         let lapul = '-';
+        let actualSolution = '-';
+        let technician = '-';
  
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
@@ -325,6 +330,12 @@ function parseWorkOrders(html) {
         }
         if (columnMap.lapul !== undefined && cells[columnMap.lapul]) {
             lapul = cells[columnMap.lapul].trim();
+        }
+        if (columnMap.actualSolution !== undefined && cells[columnMap.actualSolution]) {
+            actualSolution = cells[columnMap.actualSolution].trim();
+        }
+        if (columnMap.technician !== undefined && cells[columnMap.technician]) {
+            technician = cells[columnMap.technician].trim();
         }
  
         for (let i = 0; i < cells.length; i++) {
@@ -390,6 +401,8 @@ function parseWorkOrders(html) {
             serviceNo: serviceNo,
             reportedBy: reportedBy || sourceTicket,
             lapul: lapul || '-',
+            actualSolution: actualSolution || '-',
+            technician: technician || '-',
             source: 'Scraper'
         };
 
@@ -400,8 +413,8 @@ function parseWorkOrders(html) {
             ticket.expiredDate = calculateExpiredDate(ticket.reportedDate, ticket.customerType);
         }
 
-        // Skip closed tickets - only process active ones
-        if (status === 'CLOSED' || status === 'RESOLVED' || status === 'CANCELLED') {
+        // Skip closed tickets - only process active ones unless includeClosed is requested
+        if (!options.includeClosed && (status === 'CLOSED' || status === 'RESOLVED' || status === 'CANCELLED')) {
             console.log(`⏭️ Skipping closed ticket: ${orderId}`);
             return;
         }
@@ -1433,5 +1446,35 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
 
     } finally {
         isScrapingNow = false;
+    }
+}
+
+export async function scrapeClosedTickets(closedUrl) {
+    const { page, isShared } = await getScrapePage();
+    try {
+        console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
+        await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Check if we hit the login page
+        if (await isLoginPage(page)) {
+            console.log('🔐 [Closed Scraper] Session expired. Performing auto-login...');
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                if (await isLoginPage(page)) {
+                    await handleTOTPPage(page);
+                }
+                await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            }
+        }
+
+        const html = await page.content();
+        const tickets = parseWorkOrders(html, { includeClosed: true });
+        console.log(`📋 [Closed Scraper] Parsed ${tickets.length} closed tickets`);
+        return tickets;
+    } catch (err) {
+        console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
+        throw err;
     }
 }
