@@ -186,8 +186,8 @@ function parseWorkOrders(html, options = {}) {
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
                 if (text.includes('lapul')) columnMap.lapul = i;
-                if (text.includes('actual') || text.includes('solution') || text.includes('solusi')) columnMap.actualSolution = i;
-                if (text.includes('technician') || text.includes('closed') || text.includes('petugas') || text.includes('owner')) columnMap.technician = i;
+                if (text.includes('actual') && (text.includes('solution') || text.includes('description') || text.includes('solusi'))) columnMap.actualSolution = i;
+                if (text.includes('technician') || text.includes('petugas') || (text.includes('closed') && text.includes('by'))) columnMap.technician = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
