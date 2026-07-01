@@ -431,12 +431,12 @@ Chat ID: <code>${chatId}</code>
 
         const proactiveUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/inboxTicketProactive?d-6878233-p=1&d-6878233-ps=100&d-6878233-fn_reported_date_filter=&d-6878233-fn_reported_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_C_OWNER_GROUP=&d-6878233-fn_C_OWNER=&d-6878233-fn_C_REPORTED_PRIORITY=&d-6878233-fn_C_SOURCE_TICKET=&d-6878233-fn_C_EXTERNAL_TICKETID=&d-6878233-fn_C_CHANNEL=&d-6878233-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-6878233-fn_C_CUSTOMER_TYPE=&d-6878233-fn_C_SERVICE_NO=&d-6878233-fn_C_SERVICE_TYPE=&d-6878233-fn_C_SERVICE_ID=&d-6878233-fn_C_SLG=&d-6878233-fn_C_KODE_PRODUK=&d-6878233-fn_DATEMODIFIED=&d-6878233-fn_C_CLOSED_BY=&d-6878233-fn_C_WORK_ZONE=TPI%2CTUB%2CKIJ%2CKMS%2CPYT%2CDBS%2CTER%2CRAI&d-6878233-fn_C_WITEL=&d-6878233-fn_C_REGION=&d-6878233-fn_C_ID_TICKET=&d-6878233-fn_C_ACTUAL_SOLUTION=&d-6878233-fn_C_CLASSIFICATION_PATH=&d-6878233-fn_C_INCIDENT_DOMAIN=&d-6878233-fn_C_TICKET_STATUS=&d-6878233-fn_C_PERANGKAT=&d-6878233-fn_C_DESCRIPTION_ASSIGMENT=&d-6878233-fn_C_CLASSIFICATION_CATEGORY=&d-6878233-fn_C_REALM=&d-6878233-fn_C_PIPE_NAME=&d-6878233-fn_C_CUSTOMER_ID=&d-6878233-fn_C_RELATED_TO_GAMAS=&d-6878233-fn_C_TICKET_ID_GAMAS=&d-6878233-fn_C_GUARANTE_STATUS=&d-6878233-fn_C_DESCRIPTION_CUSTOMERID=`;
 
-        // Build dynamic WIB date range (1 day ago → today) for closed tickets
-        const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
-        const repFrom = toWIBDate(yesterday) + ' 00:00';
-        const repTo   = toWIBDate(now)  + ' 23:59';
+        // Build dynamic WIB date range (2 days ago → today) for closed tickets
+        const repPast = new Date(now); repPast.setDate(now.getDate() - 2);
+        const repFrom = toWIBDate(repPast) + ' 00:00';
+        const repTo   = toWIBDate(now)  + ' 23:00';
         const statFrom = toWIBDate(now) + ' 00:00';
-        const statTo   = toWIBDate(now)  + ' 23:59';
+        const statTo   = toWIBDate(now)  + ' 23:00';
 
         const closedUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
 
