@@ -2,7 +2,7 @@ import fs from 'fs';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import { getBrowserInstance, getPageInstance, getUserDataDir } from './browser.js';
-import { isLoginPage, performAutoLogin, handleTOTPPage } from './auth.js';
+import { isLoginPage, performAutoLogin, handleTOTPPage, isLoggedIn } from './auth.js';
 import { getConfig, saveConfig, getWorkOrderById, updateWorkOrderCoordinates } from './database.js';
 import { formatToWIB, getWIBDate } from '../utils/time.js';
 
@@ -880,6 +880,27 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
 
         // Wait a bit for dynamic content
         await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Check if we are logged in. If not (and not currently on login page), force navigation to login and login.
+        const loggedIn = await isLoggedIn(page);
+        if (!loggedIn && !(await isLoginPage(page))) {
+            console.log('🔐 Session is guest/not logged in. Navigating to login page for auto-login...');
+            const { loadCredentials } = await import('./auth.js');
+            const credentials = loadCredentials();
+            if (credentials) {
+                await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
+                    waitUntil: 'networkidle2',
+                    timeout: 45000
+                });
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    console.log('✅ Auto-login successful! Returning to target URL...');
+                    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                } else {
+                    console.log('⚠️ Forced auto-login failed:', loginResult.message);
+                }
+            }
+        }
 
         // Check if we're on login page and auto-login if needed
         if (await isLoginPage(page)) {
