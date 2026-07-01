@@ -369,7 +369,6 @@ Chat ID Anda: \`${chatId}\`
             const result = await scrapeOnce(activeTicketsUrl, null, { skipConfigOverrides: true });
             const activeTickets = (result.data || []).filter(wo => wo.sourceTicket === 'CUSTOMER');
 
-            const now = new Date();
             const day = String(now.getDate()).padStart(2, '0');
             const month = String(now.getMonth() + 1).padStart(2, '0');
             const year = now.getFullYear();
