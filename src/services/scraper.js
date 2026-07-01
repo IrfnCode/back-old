@@ -168,7 +168,7 @@ function parseWorkOrders(html, options = {}) {
         const headerText = $el.text().toLowerCase();
 
         // Check if this looks like a header row
-        if (headerText.includes('incident') || headerText.includes('summary')) {
+        if (headerText.includes('incident') || headerText.includes('summary') || headerText.includes('service') || headerText.includes('solution') || headerText.includes('closed')) {
             $el.find('th, td').each((i, cell) => {
                 const text = $(cell).text().trim().toLowerCase();
                 if (text.includes('service') && text.includes('no')) columnMap.serviceNo = i;
@@ -186,10 +186,8 @@ function parseWorkOrders(html, options = {}) {
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
                 if (text.includes('lapul')) columnMap.lapul = i;
-                if (text.includes('actual') && text.includes('solution')) columnMap.actualSolution = i;
-                if (text.includes('solution') && !text.includes('actual')) columnMap.actualSolution = i;
-                if (text.includes('technician')) columnMap.technician = i;
-                if (text.includes('closed') && text.includes('by')) columnMap.technician = i;
+                if (text.includes('actual') || text.includes('solution') || text.includes('solusi')) columnMap.actualSolution = i;
+                if (text.includes('technician') || text.includes('closed') || text.includes('petugas') || text.includes('owner')) columnMap.technician = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
