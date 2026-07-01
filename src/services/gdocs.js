@@ -956,16 +956,18 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         });
 
         const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
-        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
-        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
+        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE'];
+        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE'];
         
-        const colWidth = regHeaders.length; // 9
+        const regColWidth = regHeaders.length; // 9
+        const sqmColWidth = sqmHeaders.length; // 7
+        const unspecColWidth = unspecHeaders.length; // 7
         const spacing = 1; // 1 empty column separator
 
         // Column indexes
         const regColStart = 0;                     // Columns A-I (0 to 8)
-        const sqmColStart = colWidth + spacing;     // Columns K-S (10 to 18)
-        const unspecColStart = sqmColStart + colWidth + spacing; // Columns U-AC (20 to 28)
+        const sqmColStart = regColStart + regColWidth + spacing; // Columns K-Q (10 to 16)
+        const unspecColStart = sqmColStart + sqmColWidth + spacing; // Columns S-Y (18 to 24)
 
         // Helper to fill cell or pad a row array to at least certain length
         const setRowCells = (rowArr, startIdx, dataArr) => {
@@ -980,12 +982,12 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         // --- ROW 0: TITLE ROW ---
         const row0 = [];
         setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===', '', '', '', '', '', '', '', '']);
-        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '', '', '']);
-        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '', '', '']);
+        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '']);
+        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '']);
         values.push(row0);
 
         // Add formatting requests for Title row: Merge and Style
-        const addTitleFormat = (colStart, bgColor, textColor) => {
+        const addTitleFormat = (colStart, colWidth, bgColor, textColor) => {
             formattingRequests.push({
                 mergeCells: {
                     range: {
@@ -1019,9 +1021,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         };
         
         // Soft backgrounds + matching text colors
-        addTitleFormat(regColStart, { red: 0.92, green: 0.96, blue: 0.98 }, { red: 0.11, green: 0.21, blue: 0.34 });
-        addTitleFormat(sqmColStart, { red: 0.91, green: 0.97, blue: 0.96 }, { red: 0.05, green: 0.35, blue: 0.29 });
-        addTitleFormat(unspecColStart, { red: 0.99, green: 0.95, blue: 0.91 }, { red: 0.55, green: 0.22, blue: 0.0 });
+        addTitleFormat(regColStart, regColWidth, { red: 0.92, green: 0.96, blue: 0.98 }, { red: 0.11, green: 0.21, blue: 0.34 });
+        addTitleFormat(sqmColStart, sqmColWidth, { red: 0.91, green: 0.97, blue: 0.96 }, { red: 0.05, green: 0.35, blue: 0.29 });
+        addTitleFormat(unspecColStart, unspecColWidth, { red: 0.99, green: 0.95, blue: 0.91 }, { red: 0.55, green: 0.22, blue: 0.0 });
 
         // --- ROW 1: HEADERS ROW ---
         const row1 = [];
@@ -1030,7 +1032,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         setRowCells(row1, unspecColStart, unspecHeaders);
         values.push(row1);
 
-        const addHeaderFormat = (colStart, headerColor) => {
+        const addHeaderFormat = (colStart, colWidth, headerColor) => {
             formattingRequests.push({
                 repeatCell: {
                     range: {
@@ -1051,12 +1053,12 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 }
             });
         };
-        addHeaderFormat(regColStart, { red: 0.17, green: 0.24, blue: 0.31 }); // Professional Slate Gray (#2C3E50)
-        addHeaderFormat(sqmColStart, { red: 0.09, green: 0.63, blue: 0.52 }); // Forest Teal (#16A085)
-        addHeaderFormat(unspecColStart, { red: 0.83, green: 0.33, blue: 0.0 }); // Warm Bronze/Amber (#D35400)
+        addHeaderFormat(regColStart, regColWidth, { red: 0.17, green: 0.24, blue: 0.31 }); // Professional Slate Gray (#2C3E50)
+        addHeaderFormat(sqmColStart, sqmColWidth, { red: 0.09, green: 0.63, blue: 0.52 }); // Forest Teal (#16A085)
+        addHeaderFormat(unspecColStart, unspecColWidth, { red: 0.83, green: 0.33, blue: 0.0 }); // Warm Bronze/Amber (#D35400)
 
         // --- DATA ROWS ---
-        const formatRows = (tickets, isSqm = false) => {
+        const formatRows = (tickets, type) => {
             return tickets.map((wo, index) => {
                 const orderId = wo.orderId || wo.order_id || '-';
                 const serviceNo = wo.serviceNo || wo.service_no || '-';
@@ -1068,23 +1070,45 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
 
-                return [
-                    index + 1,
-                    orderId,
-                    serviceNo,
-                    isSqm ? summaryVal : ttr,
-                    custType,
-                    gaul,
-                    lapul,
-                    wz,
-                    bookingDate
-                ];
+                if (type === 'reguler') {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        ttr,
+                        custType,
+                        gaul,
+                        lapul,
+                        wz,
+                        bookingDate
+                    ];
+                } else if (type === 'sqm') {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        summaryVal,
+                        custType,
+                        wz,
+                        bookingDate
+                    ];
+                } else {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        ttr,
+                        custType,
+                        wz,
+                        bookingDate
+                    ];
+                }
             });
         };
 
-        const regData = formatRows(regulerTickets, false);
-        const sqmData = formatRows(sqmTickets, true);
-        const unspecData = formatRows(unspecTickets, false);
+        const regData = formatRows(regulerTickets, 'reguler');
+        const sqmData = formatRows(sqmTickets, 'sqm');
+        const unspecData = formatRows(unspecTickets, 'unspec');
 
         // Determine data rows range
         const regRowMax = regData.length > 0 ? regData.length : 1;
@@ -1093,7 +1117,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const totalDataRows = Math.max(regRowMax, sqmRowMax, unspecRowMax);
 
         // Helper to format a table cell grid (border + soft zebra)
-        const addCellFormat = (rowIdx, colStart, isEven) => {
+        const addCellFormat = (rowIdx, colStart, colWidth, isEven) => {
             formattingRequests.push({
                 repeatCell: {
                     range: {
@@ -1120,7 +1144,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         };
 
         // Helper for styling "Tidak ada data" rows cleanly
-        const addNoDataFormat = (rowIdx, colStart) => {
+        const addNoDataFormat = (rowIdx, colStart, colWidth) => {
             formattingRequests.push({
                 mergeCells: {
                     range: {
@@ -1166,28 +1190,28 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             // 1. Reguler Column fill
             if (regData.length === 0 && r === 0) {
                 setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
-                addNoDataFormat(2, regColStart);
+                addNoDataFormat(2, regColStart, regColWidth);
             } else if (r < regData.length) {
                 setRowCells(dataRow, regColStart, regData[r]);
-                addCellFormat(2 + r, regColStart, isEven);
+                addCellFormat(2 + r, regColStart, regColWidth, isEven);
             }
 
             // 2. SQM Column fill
             if (sqmData.length === 0 && r === 0) {
-                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
-                addNoDataFormat(2, sqmColStart);
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '']);
+                addNoDataFormat(2, sqmColStart, sqmColWidth);
             } else if (r < sqmData.length) {
                 setRowCells(dataRow, sqmColStart, sqmData[r]);
-                addCellFormat(2 + r, sqmColStart, isEven);
+                addCellFormat(2 + r, sqmColStart, sqmColWidth, isEven);
             }
 
             // 3. UNSPEC Column fill
             if (unspecData.length === 0 && r === 0) {
-                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
-                addNoDataFormat(2, unspecColStart);
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '']);
+                addNoDataFormat(2, unspecColStart, unspecColWidth);
             } else if (r < unspecData.length) {
                 setRowCells(dataRow, unspecColStart, unspecData[r]);
-                addCellFormat(2 + r, unspecColStart, isEven);
+                addCellFormat(2 + r, unspecColStart, unspecColWidth, isEven);
             }
 
             values.push(dataRow);
@@ -1197,9 +1221,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const colWidths = [
             45,  125, 115, 115, 115, 145, 75,  95, 135, // Reguler (0-8)
             30,                                         // Spacing separator (9)
-            45,  125, 115, 280, 115, 145, 75,  95, 135, // SQM (10-18)
-            30,                                         // Spacing separator (19)
-            45,  125, 115, 115, 115, 145, 75,  95, 135  // UNSPEC (20-28)
+            45,  125, 115, 280, 115, 95,  135,          // SQM (10-16) - Removed GAUL and LAPUL
+            30,                                         // Spacing separator (17)
+            45,  125, 115, 115, 115, 95,  135           // UNSPEC (18-24) - Removed GAUL and LAPUL
         ];
 
         colWidths.forEach((width, idx) => {
