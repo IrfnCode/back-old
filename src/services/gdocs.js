@@ -943,19 +943,41 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const values = [];
         const formattingRequests = [];
 
-        // Helper to add a table with custom header color and styling
-        const addTable = (title, headers, rows, headerColor) => {
-            const startRow = values.length;
-            
-            // Title row
-            values.push([title]);
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
+        const colWidth = headers.length; // 8
+        const spacing = 1; // 1 empty column separator
+
+        // Column indexes
+        const regColStart = 0;                     // Columns A-H (0 to 7)
+        const sqmColStart = colWidth + spacing;     // Columns J-Q (9 to 16)
+        const unspecColStart = sqmColStart + colWidth + spacing; // Columns S-Z (18 to 25)
+
+        // Helper to fill cell or pad a row array to at least certain length
+        const setRowCells = (rowArr, startIdx, dataArr) => {
+            while (rowArr.length < startIdx) {
+                rowArr.push('');
+            }
+            for (let i = 0; i < dataArr.length; i++) {
+                rowArr[startIdx + i] = dataArr[i];
+            }
+        };
+
+        // --- ROW 0: TITLE ROW ---
+        const row0 = [];
+        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===']);
+        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===']);
+        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===']);
+        values.push(row0);
+
+        // Add formatting requests for Title row
+        const addTitleFormat = (colStart) => {
             formattingRequests.push({
                 repeatCell: {
                     range: {
-                        startRowIndex: startRow,
-                        endRowIndex: startRow + 1,
-                        startColumnIndex: 0,
-                        endColumnIndex: headers.length
+                        startRowIndex: 0,
+                        endRowIndex: 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
                     },
                     cell: {
                         userEnteredFormat: {
@@ -965,18 +987,26 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     fields: 'userEnteredFormat.textFormat'
                 }
             });
+        };
+        addTitleFormat(regColStart);
+        addTitleFormat(sqmColStart);
+        addTitleFormat(unspecColStart);
 
-            // Headers row
-            const headerRowIndex = values.length;
-            values.push(headers);
-            
+        // --- ROW 1: HEADERS ROW ---
+        const row1 = [];
+        setRowCells(row1, regColStart, headers);
+        setRowCells(row1, sqmColStart, headers);
+        setRowCells(row1, unspecColStart, headers);
+        values.push(row1);
+
+        const addHeaderFormat = (colStart, headerColor) => {
             formattingRequests.push({
                 repeatCell: {
                     range: {
-                        startRowIndex: headerRowIndex,
-                        endRowIndex: headerRowIndex + 1,
-                        startColumnIndex: 0,
-                        endColumnIndex: headers.length
+                        startRowIndex: 1,
+                        endRowIndex: 2,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
                     },
                     cell: {
                         userEnteredFormat: {
@@ -989,69 +1019,12 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
                 }
             });
-
-            // Data rows
-            const dataStartRow = values.length;
-            if (rows.length === 0) {
-                values.push(['Tidak ada data']);
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: dataStartRow,
-                            endRowIndex: dataStartRow + 1,
-                            startColumnIndex: 0,
-                            endColumnIndex: 1
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
-                            }
-                        },
-                        fields: 'userEnteredFormat.textFormat'
-                    }
-                });
-            } else {
-                rows.forEach(r => {
-                    values.push(r);
-                });
-                const dataEndRow = values.length;
-                
-                // Format each cell with thin borders and zebra striping
-                for (let rIdx = dataStartRow; rIdx < dataEndRow; rIdx++) {
-                    const isEven = (rIdx - dataStartRow) % 2 === 0;
-                    formattingRequests.push({
-                        repeatCell: {
-                            range: {
-                                startRowIndex: rIdx,
-                                endRowIndex: rIdx + 1,
-                                startColumnIndex: 0,
-                                endColumnIndex: headers.length
-                            },
-                            cell: {
-                                userEnteredFormat: {
-                                    backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
-                                    textFormat: { fontSize: 10 },
-                                    borders: {
-                                        top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                        bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                        left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                        right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
-                                    }
-                                }
-                            },
-                            fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
-                        }
-                    });
-                }
-            }
-
-            // Spacing rows
-            values.push([]);
-            values.push([]);
         };
+        addHeaderFormat(regColStart, { red: 0.12, green: 0.31, blue: 0.47 }); // Cool Blue (#1F4E78)
+        addHeaderFormat(sqmColStart, { red: 0.09, green: 0.36, blue: 0.20 }); // Emerald Green (#165B33)
+        addHeaderFormat(unspecColStart, { red: 0.78, green: 0.35, blue: 0.07 }); // Amber Orange (#C65907)
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
-
+        // --- DATA ROWS ---
         const formatRows = (tickets) => {
             return tickets.map((wo, index) => {
                 const orderId = wo.orderId || wo.order_id || '-';
@@ -1075,10 +1048,162 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             });
         };
 
-        // Construct sections
-        addTable('=== DATA TIKET REGULER ===', headers, formatRows(regulerTickets), { red: 0.12, green: 0.31, blue: 0.47 }); // Cool Blue (#1F4E78)
-        addTable('=== DATA TIKET SQM ===', headers, formatRows(sqmTickets), { red: 0.09, green: 0.36, blue: 0.20 }); // Emerald Green (#165B33)
-        addTable('=== DATA TIKET UNSPEC ===', headers, formatRows(unspecTickets), { red: 0.78, green: 0.35, blue: 0.07 }); // Amber Orange (#C65907)
+        const regData = formatRows(regulerTickets);
+        const sqmData = formatRows(sqmTickets);
+        const unspecData = formatRows(unspecTickets);
+
+        // Determine data rows range
+        const regRowMax = regData.length > 0 ? regData.length : 1;
+        const sqmRowMax = sqmData.length > 0 ? sqmData.length : 1;
+        const unspecRowMax = unspecData.length > 0 ? unspecData.length : 1;
+        const totalDataRows = Math.max(regRowMax, sqmRowMax, unspecRowMax);
+
+        for (let r = 0; r < totalDataRows; r++) {
+            const dataRow = [];
+
+            // 1. Reguler Column fill
+            if (regData.length === 0 && r === 0) {
+                setRowCells(dataRow, regColStart, ['Tidak ada data']);
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2,
+                            endRowIndex: 3,
+                            startColumnIndex: regColStart,
+                            endColumnIndex: regColStart + 1
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
+                            }
+                        },
+                        fields: 'userEnteredFormat.textFormat'
+                    }
+                });
+            } else if (r < regData.length) {
+                setRowCells(dataRow, regColStart, regData[r]);
+                const isEven = r % 2 === 0;
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2 + r,
+                            endRowIndex: 2 + r + 1,
+                            startColumnIndex: regColStart,
+                            endColumnIndex: regColStart + colWidth
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                                textFormat: { fontSize: 10 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
+                                }
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            }
+
+            // 2. SQM Column fill
+            if (sqmData.length === 0 && r === 0) {
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data']);
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2,
+                            endRowIndex: 3,
+                            startColumnIndex: sqmColStart,
+                            endColumnIndex: sqmColStart + 1
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
+                            }
+                        },
+                        fields: 'userEnteredFormat.textFormat'
+                    }
+                });
+            } else if (r < sqmData.length) {
+                setRowCells(dataRow, sqmColStart, sqmData[r]);
+                const isEven = r % 2 === 0;
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2 + r,
+                            endRowIndex: 2 + r + 1,
+                            startColumnIndex: sqmColStart,
+                            endColumnIndex: sqmColStart + colWidth
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                                textFormat: { fontSize: 10 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
+                                }
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            }
+
+            // 3. UNSPEC Column fill
+            if (unspecData.length === 0 && r === 0) {
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data']);
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2,
+                            endRowIndex: 3,
+                            startColumnIndex: unspecColStart,
+                            endColumnIndex: unspecColStart + 1
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
+                            }
+                        },
+                        fields: 'userEnteredFormat.textFormat'
+                    }
+                });
+            } else if (r < unspecData.length) {
+                setRowCells(dataRow, unspecColStart, unspecData[r]);
+                const isEven = r % 2 === 0;
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2 + r,
+                            endRowIndex: 2 + r + 1,
+                            startColumnIndex: unspecColStart,
+                            endColumnIndex: unspecColStart + colWidth
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                                textFormat: { fontSize: 10 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
+                                }
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            }
+
+            values.push(dataRow);
+        }
 
         // Clear all columns from A to Z first
         try {
@@ -1117,7 +1242,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             });
         }
 
-        console.log(`✅ [GDOCS] Successfully exported to ${sheetName} sheet (Reguler: ${regulerTickets.length}, SQM: ${sqmTickets.length}, Unspec: ${unspecTickets.length})`);
+        console.log(`✅ [GDOCS] Successfully exported to ${sheetName} sheet horizontally (Reguler: ${regulerTickets.length}, SQM: ${sqmTickets.length}, Unspec: ${unspecTickets.length})`);
         return { success: true };
     } catch (error) {
         console.error('❌ [GDOCS] Failed to export proactive sheets:', error.message);
