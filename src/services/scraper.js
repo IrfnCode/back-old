@@ -796,8 +796,8 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
             }
         }
 
-        // 2. Check if we have filters to apply
-        if (config.filterDateFrom || config.filterDateTo || (!options.skipConfigOverrides && config.filterWorkzone) || (!options.skipConfigOverrides && config.filterStatus)) {
+        // 2. Check if we have filters to apply (skip completely if skipConfigOverrides is true)
+        if (!options.skipConfigOverrides && (config.filterDateFrom || config.filterDateTo || config.filterWorkzone || config.filterStatus)) {
             console.log('🔧 Applying manual filters to URL...');
 
             const urlObj = new URL(baseUrl);
