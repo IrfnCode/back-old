@@ -752,19 +752,21 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         // --- AUTO SHIFT DATES LOGIC ---
         if (config.autoShiftDates === 'true' && config.filterDateTo) {
             try {
-                const nowWib = getWIBDate();
-                const configTo = new Date(config.filterDateTo.replace('T', ' '));
-                const configFrom = new Date((config.filterDateFrom || '').replace('T', ' '));
+                const now = new Date();
+                // Parse database configs with +07:00 (WIB) offset to prevent server timezone drift
+                const configTo = new Date(config.filterDateTo.includes('+') || config.filterDateTo.includes('Z') ? config.filterDateTo : config.filterDateTo + '+07:00');
+                const configFrom = new Date(config.filterDateFrom ? (config.filterDateFrom.includes('+') || config.filterDateFrom.includes('Z') ? config.filterDateFrom : config.filterDateFrom + '+07:00') : now);
 
-                // Only proceed if both dates are valid
                 if (!isNaN(configTo.getTime()) && !isNaN(configFrom.getTime())) {
-                    // Create "Today at 23:00 WIB" as the target end point
-                    const targetTo = new Date(nowWib);
-                    targetTo.setHours(23, 0, 0, 0);
+                    // Get today's date in WIB
+                    const todayWibStr = formatToWIB(now).slice(0, 10); // YYYY-MM-DD
 
-                    // Only shift if targetTo is ahead of current configTo
-                    if (targetTo.getTime() > configTo.getTime()) {
-                    const daysDiff = Math.floor((targetTo.getTime() - configTo.getTime()) / (24 * 60 * 60 * 1000));
+                    // Reset both to midnight WIB (+07:00) to calculate pure calendar days difference
+                    const d1 = new Date(todayWibStr + 'T00:00:00+07:00');
+                    const configToDateStr = formatToWIB(configTo).slice(0, 10);
+                    const d2 = new Date(configToDateStr + 'T00:00:00+07:00');
+
+                    const daysDiff = Math.floor((d1.getTime() - d2.getTime()) / (24 * 60 * 60 * 1000));
 
                     if (daysDiff > 0) {
                         console.log(`📅 [Scraper] Auto-shifting dates forward by ${daysDiff} days...`);
@@ -775,7 +777,7 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                         const newFrom = new Date(configFrom);
                         newFrom.setDate(configFrom.getDate() + daysDiff);
 
-                        // Format back to YYYY-MM-DDTHH:mm (HTML datetime-local format)
+                        // Format back to YYYY-MM-DDTHH:mm (HTML datetime-local format) in WIB
                         const fmtTo = formatToWIB(newTo).slice(0, 16).replace(' ', 'T');
                         const fmtFrom = formatToWIB(newFrom).slice(0, 16).replace(' ', 'T');
 
@@ -789,7 +791,6 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
 
                         console.log(`✅ [Scraper] Dates updated: ${fmtFrom} to ${fmtTo}`);
                     }
-                }
                 }
             } catch (err) {
                 console.error('❌ [Scraper] Failed to auto-shift dates:', err.message);
