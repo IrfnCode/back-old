@@ -120,6 +120,10 @@ function parseWorkOrders(html) {
         if (headerText.includes('incident') || headerText.includes('summary')) {
             $el.find('th, td').each((i, cell) => {
                 const text = $(cell).text().trim().toLowerCase();
+                if (text.includes('service') && text.includes('no')) columnMap.serviceNo = i;
+                if (text.includes('service') && text.includes('number')) columnMap.serviceNo = i;
+                if (text.includes('no') && text.includes('layanan')) columnMap.serviceNo = i;
+                if (text.includes('no') && text.includes('internet')) columnMap.serviceNo = i;
                 if (text.includes('booking')) columnMap.bookingDate = i;
                 if (text.includes('customer') && text.includes('segment')) columnMap.customerSegment = i;
                 if (text.includes('workzone')) columnMap.workzone = i;
@@ -227,7 +231,8 @@ function parseWorkOrders(html) {
         let sourceTicket = 'UNKNOWN';
         let deviceName = null;
         let rkInformation = null;
-
+        let serviceNo = null;
+ 
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
             bookingDate = cells[columnMap.bookingDate];
@@ -257,11 +262,14 @@ function parseWorkOrders(html) {
         if (columnMap.rkInformation !== undefined && cells[columnMap.rkInformation]) {
             rkInformation = cells[columnMap.rkInformation].trim();
         }
-
+        if (columnMap.serviceNo !== undefined && cells[columnMap.serviceNo]) {
+            serviceNo = cells[columnMap.serviceNo].trim();
+        }
+ 
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             if (!cell) continue;
-
+ 
             // Customer type pattern
             if (cell.match(/^(HVC_?(PLATINUM|DIAMOND|GOLD)|REGULER)$/i)) {
                 customerType = cell.toUpperCase().replace(/[-\s]/g, '_');
@@ -282,8 +290,12 @@ function parseWorkOrders(html) {
             if (sourceTicket === 'UNKNOWN' && cell.match(/^(CUSTOMER|PROACTIVE|GAMAS|SQM)$/i)) {
                 sourceTicket = cell.toUpperCase();
             }
+            // Service number pattern (e.g. 12-digit number starting with 1, 2, or 3)
+            if (!serviceNo && cell.match(/^(111|12|13|14|15|16|17|18|19)\d{9}$/)) {
+                serviceNo = cell;
+            }
         }
-
+ 
         const ticket = {
             uuid: uuid, // Added UUID
             orderId: orderId,
@@ -302,6 +314,7 @@ function parseWorkOrders(html) {
             sourceTicket: sourceTicket,
             deviceName: deviceName,
             rkInformation: rkInformation,
+            serviceNo: serviceNo,
             source: 'Scraper'
         };
 
