@@ -5,7 +5,7 @@ import { registerTangibleHandler } from './handle_tangible.js';
 import { registerMtcHandler } from './handle_mtc.js';
 import { registerDatekHandler } from './handle_datek.js';
 import { registerPsbInputHandler, registerPsbRekapHandler } from './handle_psb.js';
-import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkersForDate, updateRekap, getConfig } from './database.js';
+import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkOrdersByServiceNo, getWorkersForDate, updateRekap, getConfig } from './database.js';
 import { askAI } from './ai.js';
 import { formatToWIB, getWIBDay, getWIBMonth, getWIBYear } from '../utils/time.js';
 
@@ -335,6 +335,31 @@ Chat ID Anda: \`${chatId}\`
             bot.sendMessage(chatId, '❌ Ticket not found');
         }
     });
+
+    // Handle /caritiket command
+    bot.onText(/\/caritiket(.*)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const input = match[1] ? match[1].trim() : '';
+
+        if (!input) {
+            return bot.sendMessage(chatId, 'ℹ️ <b>Cara Penggunaan:</b>\nKetik <code>/caritiket &lt;NOMOR_INTERNET&gt;</code>\nContoh: <code>/caritiket 111123456</code>', { parse_mode: 'HTML' });
+        }
+
+        const serviceNo = input.split(' ')[0];
+        const results = getWorkOrdersByServiceNo(serviceNo);
+
+        if (results && results.length > 0) {
+            await bot.sendMessage(chatId, `🔍 Menemukan ${results.length} tiket untuk nomor internet <b>${serviceNo}</b>:`, { parse_mode: 'HTML' });
+            for (const wo of results) {
+                await sendWorkOrderNotification(chatId, wo, '', true);
+                // Delay 500ms between messages to avoid rate limit
+                await new Promise(r => setTimeout(r, 500));
+            }
+        } else {
+            await bot.sendMessage(chatId, `❌ Tiket untuk nomor internet <b>${serviceNo}</b> tidak ditemukan`, { parse_mode: 'HTML' });
+        }
+    });
+
 
     // Handle /tiketaktif command
     bot.onText(/\/tiketaktif/, async (msg) => {
