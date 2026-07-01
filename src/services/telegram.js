@@ -361,6 +361,76 @@ Chat ID Anda: \`${chatId}\`
     });
 
 
+    // Handle /scrapsheet command
+    bot.onText(/\/scrapsheet/, async (msg) => {
+        const chatId = msg.chat.id;
+
+        const loadingMsg = await bot.sendMessage(chatId, "⏳ Menghubungkan ke Google Sheets...\nMemeriksa koneksi spreadsheet...");
+
+        try {
+            const { exportProactiveToSpreadsheet } = await import('./gdocs.js');
+            const { scrapeProactiveAndReguler } = await import('./scraper.js');
+
+            const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+            const sheetName = 'DATA TIKET';
+
+            await bot.editMessageText(`✅ Google Sheets terhubung!\n⏳ Memulai proses scraping Insera untuk kategori Reguler, SQM, dan UNSPEC...`, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id
+            });
+
+            // Build dynamic date filters for the last 3 days in WIB timezone
+            const formatToWIBLocal = (d) => {
+                const wibTime = new Date(d.getTime() + (7 * 3600000));
+                const year = wibTime.getUTCFullYear();
+                const month = String(wibTime.getUTCMonth() + 1).padStart(2, '0');
+                const date = String(wibTime.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${date}`;
+            };
+            const now = new Date();
+            const dateTo = formatToWIBLocal(now) + ' 23:59';
+            const pastDate = new Date();
+            pastDate.setDate(now.getDate() - 2); // 2 days range (e.g. June 29 to July 1)
+            const dateFrom = formatToWIBLocal(pastDate) + ' 00:00';
+
+            const regulerUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateTo)}&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CTUB%2CKIJ%2CTER%2CRAI%2CDBS&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+
+            const proactiveUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/inboxTicketProactive?d-6878233-p=1&d-6878233-ps=100&d-6878233-fn_reported_date_filter=&d-6878233-fn_reported_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_C_OWNER_GROUP=&d-6878233-fn_C_OWNER=&d-6878233-fn_C_REPORTED_PRIORITY=&d-6878233-fn_C_SOURCE_TICKET=&d-6878233-fn_C_EXTERNAL_TICKETID=&d-6878233-fn_C_CHANNEL=&d-6878233-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-6878233-fn_C_CUSTOMER_TYPE=&d-6878233-fn_C_SERVICE_NO=&d-6878233-fn_C_SERVICE_TYPE=&d-6878233-fn_C_SERVICE_ID=&d-6878233-fn_C_SLG=&d-6878233-fn_C_KODE_PRODUK=&d-6878233-fn_DATEMODIFIED=&d-6878233-fn_C_CLOSED_BY=&d-6878233-fn_C_WORK_ZONE=TPI%2CTUB%2CKIJ%2CKMS%2CPYT%2CDBS%2CTER%2CRAI&d-6878233-fn_C_WITEL=&d-6878233-fn_C_REGION=&d-6878233-fn_C_ID_TICKET=&d-6878233-fn_C_ACTUAL_SOLUTION=&d-6878233-fn_C_CLASSIFICATION_PATH=&d-6878233-fn_C_INCIDENT_DOMAIN=&d-6878233-fn_C_TICKET_STATUS=&d-6878233-fn_C_PERANGKAT=&d-6878233-fn_C_DESCRIPTION_ASSIGMENT=&d-6878233-fn_C_CLASSIFICATION_CATEGORY=&d-6878233-fn_C_REALM=&d-6878233-fn_C_PIPE_NAME=&d-6878233-fn_C_CUSTOMER_ID=&d-6878233-fn_C_RELATED_TO_GAMAS=&d-6878233-fn_C_TICKET_ID_GAMAS=&d-6878233-fn_C_GUARANTE_STATUS=&d-6878233-fn_C_DESCRIPTION_CUSTOMERID=`;
+
+            const scrapedData = await scrapeProactiveAndReguler(regulerUrl, proactiveUrl);
+
+            await bot.editMessageText(`⏳ Mengekspor ${scrapedData.reguler.length} Reguler, ${scrapedData.sqm.length} SQM, dan ${scrapedData.unspec.length} UNSPEC tiket ke Google Spreadsheet...`, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id
+            });
+
+            await exportProactiveToSpreadsheet(spreadsheetId, sheetName, scrapedData.reguler, scrapedData.sqm, scrapedData.unspec);
+
+            const successMsg = `📊 <b>Proactive & Reguler Sync Sukses!</b>\n\n` +
+                               `🔹 <b>Tiket Reguler:</b> ${scrapedData.reguler.length} tiket\n` +
+                               `🔸 <b>Tiket SQM:</b> ${scrapedData.sqm.length} tiket\n` +
+                               `🔹 <b>Tiket UNSPEC:</b> ${scrapedData.unspec.length} tiket\n\n` +
+                               `📝 Data berhasil diekspor ke sheet <b>DATA TIKET</b>.\n` +
+                               `🔗 <a href="https://docs.google.com/spreadsheets/d/${spreadsheetId}">Buka Google Spreadsheet</a>`;
+
+            await bot.editMessageText(successMsg, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id,
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
+            });
+
+        } catch (error) {
+            console.error('❌ Error /scrapsheet:', error);
+            await bot.editMessageText(`❌ <b>Proses Gagal:</b>\n${error.message}`, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id,
+                parse_mode: 'HTML'
+            });
+        }
+    });
+
+
     // Handle /tiketaktif command
     bot.onText(/\/tiketaktif/, async (msg) => {
         const chatId = msg.chat.id;

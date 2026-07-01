@@ -906,3 +906,221 @@ export async function syncDatekFromExternal() {
         return null;
     }
 }
+
+/**
+ * Extract GAUL value from ticket summary
+ */
+export function extractGaulFromSummary(summary) {
+    if (!summary) return '-';
+    // split by underscore
+    const parts = summary.split('_').map(p => p.trim());
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i].toLowerCase() === 'gaul' || parts[i].toLowerCase().startsWith('gaul')) {
+            if (i + 1 < parts.length) {
+                return parts[i + 1];
+            }
+        }
+    }
+    // Fallback: regex search
+    const match = summary.match(/gaul\s*[:_]\s*([^\s_]+)/i) || summary.match(/gaul\s+([^\s_]+)/i);
+    if (match) {
+        return match[1];
+    }
+    return '-';
+}
+
+/**
+ * Export Reguler, SQM, and UNSPEC tickets to the specified Google Sheet
+ */
+export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, regulerTickets, sqmTickets, unspecTickets) {
+    try {
+        const auth = getAuthClient();
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Ensure the sheet exists
+        await ensureSheetExists(sheets, spreadsheetId, sheetName);
+
+        const values = [];
+        const formattingRequests = [];
+
+        // Helper to add a table with custom header color and styling
+        const addTable = (title, headers, rows, headerColor) => {
+            const startRow = values.length;
+            
+            // Title row
+            values.push([title]);
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: startRow,
+                        endRowIndex: startRow + 1,
+                        startColumnIndex: 0,
+                        endColumnIndex: headers.length
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            textFormat: { bold: true, fontSize: 13, color: { red: 0.1, green: 0.1, blue: 0.1 } }
+                        }
+                    },
+                    fields: 'userEnteredFormat.textFormat'
+                }
+            });
+
+            // Headers row
+            const headerRowIndex = values.length;
+            values.push(headers);
+            
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: headerRowIndex,
+                        endRowIndex: headerRowIndex + 1,
+                        startColumnIndex: 0,
+                        endColumnIndex: headers.length
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: headerColor,
+                            textFormat: { bold: true, color: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 10 },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+
+            // Data rows
+            const dataStartRow = values.length;
+            if (rows.length === 0) {
+                values.push(['Tidak ada data']);
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: dataStartRow,
+                            endRowIndex: dataStartRow + 1,
+                            startColumnIndex: 0,
+                            endColumnIndex: 1
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                textFormat: { italic: true, color: { red: 0.5, green: 0.5, blue: 0.5 } }
+                            }
+                        },
+                        fields: 'userEnteredFormat.textFormat'
+                    }
+                });
+            } else {
+                rows.forEach(r => {
+                    values.push(r);
+                });
+                const dataEndRow = values.length;
+                
+                // Format each cell with thin borders and zebra striping
+                for (let rIdx = dataStartRow; rIdx < dataEndRow; rIdx++) {
+                    const isEven = (rIdx - dataStartRow) % 2 === 0;
+                    formattingRequests.push({
+                        repeatCell: {
+                            range: {
+                                startRowIndex: rIdx,
+                                endRowIndex: rIdx + 1,
+                                startColumnIndex: 0,
+                                endColumnIndex: headers.length
+                            },
+                            cell: {
+                                userEnteredFormat: {
+                                    backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                                    textFormat: { fontSize: 10 },
+                                    borders: {
+                                        top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                        bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                        left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
+                                        right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
+                                    }
+                                }
+                            },
+                            fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                        }
+                    });
+                }
+            }
+
+            // Spacing rows
+            values.push([]);
+            values.push([]);
+        };
+
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'WORKZONE', 'BOOKING DATE'];
+
+        const formatRows = (tickets) => {
+            return tickets.map((wo, index) => {
+                const orderId = wo.orderId || wo.order_id || '-';
+                const serviceNo = wo.serviceNo || wo.service_no || '-';
+                const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
+                const custType = wo.customerType || wo.customer_type || 'REGULER';
+                const gaul = extractGaulFromSummary(wo.summary || wo.description || '');
+                const wz = wo.workzone || '-';
+                const bookingDate = wo.bookingDate || wo.booking_date || '-';
+
+                return [
+                    index + 1,
+                    orderId,
+                    serviceNo,
+                    ttr,
+                    custType,
+                    gaul,
+                    wz,
+                    bookingDate
+                ];
+            });
+        };
+
+        // Construct sections
+        addTable('=== DATA TIKET REGULER ===', headers, formatRows(regulerTickets), { red: 0.12, green: 0.31, blue: 0.47 }); // Cool Blue (#1F4E78)
+        addTable('=== DATA TIKET SQM ===', headers, formatRows(sqmTickets), { red: 0.09, green: 0.36, blue: 0.20 }); // Emerald Green (#165B33)
+        addTable('=== DATA TIKET UNSPEC ===', headers, formatRows(unspecTickets), { red: 0.78, green: 0.35, blue: 0.07 }); // Amber Orange (#C65907)
+
+        // Clear all columns from A to Z first
+        try {
+            await sheets.spreadsheets.values.clear({
+                spreadsheetId,
+                range: `${sheetName}!A:Z`
+            });
+        } catch (e) {
+            console.log(`Note: Could not clear sheet ${sheetName}`);
+        }
+
+        // Write all values
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'RAW',
+            requestBody: { values }
+        });
+
+        // Apply visual formatting using batchUpdate
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetObj = meta.data.sheets.find(s => s.properties.title === sheetName);
+        if (sheetObj) {
+            const sheetId = sheetObj.properties.sheetId;
+            formattingRequests.forEach(req => {
+                if (req.repeatCell && req.repeatCell.range) {
+                    req.repeatCell.range.sheetId = sheetId;
+                }
+            });
+
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                    requests: formattingRequests
+                }
+            });
+        }
+
+        console.log(`✅ [GDOCS] Successfully exported to ${sheetName} sheet (Reguler: ${regulerTickets.length}, SQM: ${sqmTickets.length}, Unspec: ${unspecTickets.length})`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [GDOCS] Failed to export proactive sheets:', error.message);
+        throw error;
+    }
+}

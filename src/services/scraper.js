@@ -129,7 +129,8 @@ function parseWorkOrders(html) {
                 if (text.includes('workzone')) columnMap.workzone = i;
                 if (text.includes('witel')) columnMap.witel = i;
                 if (text.includes('status')) columnMap.status = i;
-                if (text.includes('reported')) columnMap.reportedDate = i;
+                if (text.includes('reported') && text.includes('by')) columnMap.reportedBy = i;
+                if (text.includes('reported') && !text.includes('by')) columnMap.reportedDate = i;
                 if (text.includes('source') && text.includes('ticket')) columnMap.sourceTicket = i;
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
@@ -232,6 +233,7 @@ function parseWorkOrders(html) {
         let deviceName = null;
         let rkInformation = null;
         let serviceNo = null;
+        let reportedBy = null;
  
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
@@ -264,6 +266,9 @@ function parseWorkOrders(html) {
         }
         if (columnMap.serviceNo !== undefined && cells[columnMap.serviceNo]) {
             serviceNo = cells[columnMap.serviceNo].trim();
+        }
+        if (columnMap.reportedBy !== undefined && cells[columnMap.reportedBy]) {
+            reportedBy = cells[columnMap.reportedBy].trim();
         }
  
         for (let i = 0; i < cells.length; i++) {
@@ -327,6 +332,7 @@ function parseWorkOrders(html) {
             deviceName: deviceName,
             rkInformation: rkInformation,
             serviceNo: serviceNo,
+            reportedBy: reportedBy || sourceTicket,
             source: 'Scraper'
         };
 
@@ -1221,5 +1227,154 @@ export async function scrapeSingleTicket(orderId) {
     } catch (error) {
         console.error(`❌ [Manual Scrape] Error for ${orderId}:`, error.message);
         throw error;
+    }
+}
+
+/**
+ * Scrapes both Reguler tickets and Proactive Inbox (SQM & UNSPEC OHI) sequentially.
+ * Prevents overlapping with other scraper runs using isScrapingNow.
+ */
+export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl) {
+    if (isScrapingNow) {
+        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
+    }
+    isScrapingNow = true;
+    try {
+        console.log('🔍 [Scraper] Starting proactive & reguler scraping process...');
+
+        const { page, isShared } = await getScrapePage();
+
+        // --- 1. SCRAPE REGULER TICKETS ---
+        console.log(`🔍 [Scraper] Navigating to Reguler URL: ${regulerBaseUrl}`);
+        await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Auto login if guest
+        const loggedInReg = await isLoggedIn(page);
+        if (!loggedInReg && !(await isLoginPage(page))) {
+            console.log('🔐 Session is guest. Navigating to login page...');
+            const { loadCredentials } = await import('./auth.js');
+            const credentials = loadCredentials();
+            if (credentials) {
+                await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
+                    waitUntil: 'networkidle2',
+                    timeout: 45000
+                });
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                }
+            }
+        }
+        if (await isLoginPage(page)) {
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                if (await isLoginPage(page)) {
+                    await handleTOTPPage(page);
+                }
+                await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            }
+        }
+
+        const htmlReg1 = await page.content();
+        let regulerTickets = parseWorkOrders(htmlReg1);
+        console.log(`📋 [Scraper] Found ${regulerTickets.length} reguler tickets on page 1`);
+
+        // Check page 2 for reguler if page 1 is full
+        if (regulerTickets.length >= 30) {
+            try {
+                const regulerUrlP2 = regulerBaseUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
+                console.log(`📋 [Scraper] Reguler Page 1 full, navigating to Page 2: ${regulerUrlP2}`);
+                await page.goto(regulerUrlP2, { waitUntil: 'networkidle2', timeout: 45000 });
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                const htmlReg2 = await page.content();
+                const regulerTicketsP2 = parseWorkOrders(htmlReg2);
+                console.log(`📋 [Scraper] Found ${regulerTicketsP2.length} reguler tickets on page 2`);
+                regulerTickets = [...regulerTickets, ...regulerTicketsP2];
+            } catch (err) {
+                console.error('⚠️ Failed to scrape reguler page 2:', err.message);
+            }
+        }
+
+        // Deduplicate Reguler tickets and keep only customer source
+        const seenRegIds = new Set();
+        const finalReguler = [];
+        for (const wo of regulerTickets) {
+            if (!seenRegIds.has(wo.orderId)) {
+                seenRegIds.add(wo.orderId);
+                if (wo.sourceTicket === 'CUSTOMER') {
+                    finalReguler.push(wo);
+                }
+            }
+        }
+
+        // --- 2. SCRAPE PROACTIVE TICKETS (SQM & UNSPEC) ---
+        let proactiveTickets = [];
+        let pageNum = 1;
+        let hasMore = true;
+
+        while (hasMore && pageNum <= 5) {
+            const paginatedProactiveUrl = proactiveBaseUrl
+                .replace(/d-6878233-p=\d+/, `d-6878233-p=${pageNum}`)
+                .replace(/d-6878233-ps=\d+/, 'd-6878233-ps=100');
+
+            console.log(`🔍 [Scraper] Navigating to Proactive URL Page ${pageNum}: ${paginatedProactiveUrl}`);
+            await page.goto(paginatedProactiveUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Check login just in case
+            if (await isLoginPage(page)) {
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await page.goto(paginatedProactiveUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                }
+            }
+
+            const htmlProactive = await page.content();
+            const pageTickets = parseWorkOrders(htmlProactive);
+            console.log(`📋 [Scraper] Found ${pageTickets.length} proactive tickets on page ${pageNum}`);
+            proactiveTickets = [...proactiveTickets, ...pageTickets];
+
+            if (pageTickets.length < 100) {
+                hasMore = false;
+            } else {
+                pageNum++;
+            }
+        }
+
+        // Deduplicate proactive tickets
+        const seenProactiveIds = new Set();
+        const finalProactive = [];
+        for (const wo of proactiveTickets) {
+            if (!seenProactiveIds.has(wo.orderId)) {
+                seenProactiveIds.add(wo.orderId);
+                finalProactive.push(wo);
+            }
+        }
+
+        // Filter into SQM (PROACTIVE_TICKET) and UNSPEC (PROACTIVE_OHI)
+        const sqmTickets = finalProactive.filter(wo => {
+            const repBy = (wo.reportedBy || '').toUpperCase();
+            const src = (wo.sourceTicket || '').toUpperCase();
+            return repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET');
+        });
+
+        const unspecTickets = finalProactive.filter(wo => {
+            const repBy = (wo.reportedBy || '').toUpperCase();
+            const src = (wo.sourceTicket || '').toUpperCase();
+            return repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI');
+        });
+
+        console.log(`✅ [Scraper] Scraped summary: Reguler=${finalReguler.length}, SQM=${sqmTickets.length}, UNSPEC=${unspecTickets.length}`);
+        return {
+            reguler: finalReguler,
+            sqm: sqmTickets,
+            unspec: unspecTickets
+        };
+
+    } finally {
+        isScrapingNow = false;
     }
 }
