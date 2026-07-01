@@ -420,45 +420,96 @@ Chat ID Anda: \`${chatId}\`
                 }
             }
 
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const dateStr = `${day}/${month}/${year}`;
-
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const timeStr = `${hours}:${minutes}:${seconds}`;
-
+            // Format dates based on WIB timezone to prevent server timezone mismatch
+            const formatToWIB = (d) => {
+                const wibTime = new Date(d.getTime() + (7 * 3600000));
+                const year = wibTime.getUTCFullYear();
+                const month = String(wibTime.getUTCMonth() + 1).padStart(2, '0');
+                const date = String(wibTime.getUTCDate()).padStart(2, '0');
+                const hours = String(wibTime.getUTCHours()).padStart(2, '0');
+                const minutes = String(wibTime.getUTCMinutes()).padStart(2, '0');
+                const seconds = String(wibTime.getUTCSeconds()).padStart(2, '0');
+                return `${year}-${month}-${date} ${hours}:${minutes}:${seconds}`;
+            };
+            const nowWibStr = formatToWIB(new Date()); 
+            const [wibDate, wibTime] = nowWibStr.split(' ');
+            const [wYear, wMonth, wDay] = wibDate.split('-');
+            const dateStr = `${wDay}/${wMonth}/${wYear}`;
+            const timeStr = wibTime;
+ 
             let message = `TIKET REGULER AKTIF ${dateStr}\nLAST UPDATE ${dateStr} ${timeStr}\n\n`;
-
+            
+            // Build the block content
+            let blockContent = '';
+            
+            // Group activeTickets by workzone
+            const groups = {};
+            activeTickets.forEach(wo => {
+                const wz = wo.workzone || 'UNKNOWN';
+                if (!groups[wz]) groups[wz] = [];
+                groups[wz].push(wo);
+            });
+            
+            // Sort workzones alphabetically
+            const sortedWzs = Object.keys(groups).sort();
+            
             if (activeTickets.length === 0) {
-                message += "Tidak ada tiket reguler aktif saat ini.\n\n";
+                blockContent += "Tidak ada tiket reguler aktif saat ini.\n";
             } else {
-                activeTickets.forEach((wo, index) => {
-                    const ttr = wo.ttrCustomer || '-';
-                    const wz = wo.workzone || '-';
-                    const tier = wo.customerType || 'REGULER';
-                    message += `${index + 1}. ${wo.orderId}  ${ttr}  ${wz}  ${tier}\n`;
-                    if (wo.bookingDate) {
-                        message += `BOOKING DATE : ${wo.bookingDate}\n`;
-                    }
-                    if (wo.deviceName && wo.deviceName !== '-') {
-                        message += `ODP : ${wo.deviceName}\n`;
-                    }
-                    if (wo.rkInformation && wo.rkInformation !== '-') {
-                        message += `ODC : ${wo.rkInformation}\n`;
-                    }
-                    message += '\n';
+                sortedWzs.forEach((wz, groupIndex) => {
+                    const ticketsInWz = groups[wz];
+                    blockContent += `=== ${wz} (${ticketsInWz.length} Ticket) ===\n`;
+                    
+                    ticketsInWz.forEach((wo, index) => {
+                        const ttr = wo.ttrCustomer || '-';
+                        const tier = wo.customerType || 'REGULER';
+                        
+                        const tags = [];
+                        const summaryLower = (wo.summary || '').toLowerCase();
+                        if (summaryLower.includes('non ffg') || summaryLower.includes('non_ffg')) {
+                            tags.push('NON_FFG');
+                        } else if (summaryLower.includes('ffg')) {
+                            tags.push('FFG');
+                        }
+                        
+                        if (summaryLower.includes('non manja') || summaryLower.includes('non_manja')) {
+                            tags.push('NON_MANJA');
+                        } else if (summaryLower.includes('manja')) {
+                            tags.push('MANJA');
+                        }
+                        
+                        let line = `${wo.orderId} | ${ttr} | ${tier} | ${wz}`;
+                        if (tags.length > 0) {
+                            line += ` | ${tags.join(' | ')}`;
+                        }
+                        blockContent += `${line}\n`;
+                        
+                        const odp = (wo.deviceName && wo.deviceName !== '-') ? wo.deviceName : '';
+                        const odc = (wo.rkInformation && wo.rkInformation !== '-') ? wo.rkInformation : '';
+                        blockContent += `ODP: ${odp}\n`;
+                        blockContent += `ODC: ${odc}\n`;
+                        
+                        // Add empty line between tickets, except after the last ticket of the last group
+                        if (index < ticketsInWz.length - 1 || groupIndex < sortedWzs.length - 1) {
+                            blockContent += '\n';
+                        }
+                    });
                 });
             }
-
-            message += "----------------------------------------\n\n";
+ 
+            // Escape HTML helper just in case
+            const escapeHtml = (str) => {
+                return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            };
+ 
+            // Wrap the block content inside pre and code tag with class language-python
+            message += `<pre><code class="language-python">${escapeHtml(blockContent)}</code></pre>\n\n`;
             message += "silahkan /info INCXXX untuk melihat Summary Ticket nya, Terimakasih";
-
+ 
             await bot.editMessageText(message, {
                 chat_id: chatId,
-                message_id: loadingMsg.message_id
+                message_id: loadingMsg.message_id,
+                parse_mode: 'HTML'
             });
 
         } catch (error) {
