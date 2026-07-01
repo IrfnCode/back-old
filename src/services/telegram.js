@@ -96,16 +96,43 @@ function registerGangguanHandlers(bot) {
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
         bot.sendMessage(chatId,
-            `🤖 *Work Order Bot (Gangguan) Aktif!*
+`🤖 *Work Order Bot (Gangguan) Aktif!*
 
+Halo\! Bot MORENA siap membantu memantau tiket Insera\.
 Chat ID Anda: \`${chatId}\`
 
-Gunakan Chat ID ini di konfigurasi web untuk menerima notifikasi work order.
+━━━━━━━━━━━━━━━━━━━━━
+📋 *DAFTAR COMMAND*
+━━━━━━━━━━━━━━━━━━━━━
 
-Commands:
-/status - Cek status bot
-/help - Bantuan`,
-            { parse_mode: 'Markdown' }
+*📊 INFO & STATUS*
+/start \- Tampilkan menu ini
+/status \- Cek status bot
+/help \- Bantuan lengkap
+
+*🎫 TIKET*
+/tiketaktif \- Tiket aktif per STO
+/info \[INC\] \- Detail summary tiket
+/caritiket \[no\.internet\] \- Cari tiket by service no
+
+*📝 INPUT REKAP*
+/input \- Input rekap close gangguan
+/unspec \- Input rekap UNSPEC
+/tangible \- Input rekap TANGIBLE
+/mtc \- Input rekap Maintenance
+
+*📊 GOOGLE SPREADSHEET*
+/scrapsheet \- Scraping \& ekspor sekali
+/scrapsheetauto \[menit\] \- Mulai auto\-scraping \(default 60 mnt\)
+/scrapsheetstop \- Hentikan auto\-scraping
+/scrapsheetstatus \- Cek status auto\-scraping
+
+*⚙️ LAINNYA*
+/jadwal \- Cek jadwal teknisi
+/del \- Hapus pesan bot
+/admin \- Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`,
+            { parse_mode: 'MarkdownV2' }
         );
     });
 
@@ -122,27 +149,43 @@ Chat ID: \`${chatId}\``,
         );
     });
 
-    // Handle /help command  
     bot.onText(/\/help/, (msg) => {
         const chatId = msg.chat.id;
         bot.sendMessage(chatId,
-            `📚 *Work Order Bot Command List*
+`📚 *Work Order Bot \- Bantuan Lengkap*
+Chat ID: \`${chatId}\`
 
-Bot ini akan mengirimkan notifikasi setiap ada work order baru dari hasil scraping INSERA.
+━━━━━━━━━━━━━━━━━━━━━
+📋 *DAFTAR COMMAND*
+━━━━━━━━━━━━━━━━━━━━━
 
-Chat ID Anda: \`${chatId}\`
+*📊 INFO & STATUS*
+/start \- Tampilkan menu utama
+/status \- Cek status bot
+/help \- Bantuan lengkap
 
-*Commands:*
-/start - Mulai bot
-/status - Cek status
-/input - Input rekap close gangguan
-/unspec - Input rekap UNSPEC
-/tangible - Input rekap TANGIBLE
-/mtc - Input rekap Maintenance
-/info - Cek detail tiket
-/jadwal - Cek jadwal teknisi
-/del - Hapus pesan bot
-/help - Tampilkan bantuan`,
+*🎫 TIKET*
+/tiketaktif \- Tiket aktif per STO
+/info \[INC\] \- Detail summary tiket
+/caritiket \[no\.internet\] \- Cari tiket by service no
+
+*📝 INPUT REKAP*
+/input \- Input rekap close gangguan
+/unspec \- Input rekap UNSPEC
+/tangible \- Input rekap TANGIBLE
+/mtc \- Input rekap Maintenance
+
+*📊 GOOGLE SPREADSHEET*
+/scrapsheet \- Scraping \& ekspor sekali
+/scrapsheetauto \[menit\] \- Mulai auto\-scraping \(default 60 mnt\)
+/scrapsheetstop \- Hentikan auto\-scraping
+/scrapsheetstatus \- Cek status auto\-scraping
+
+*⚙️ LAINNYA*
+/jadwal \- Cek jadwal teknisi
+/del \- Hapus pesan bot
+/admin \- Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`,
         );
     });
 
