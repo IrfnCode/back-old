@@ -185,6 +185,7 @@ function parseWorkOrders(html) {
                 if (text.includes('source') && text.includes('ticket')) columnMap.sourceTicket = i;
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
+                if (text.includes('lapul')) columnMap.lapul = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
@@ -285,6 +286,7 @@ function parseWorkOrders(html) {
         let rkInformation = null;
         let serviceNo = null;
         let reportedBy = null;
+        let lapul = '-';
  
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
@@ -320,6 +322,9 @@ function parseWorkOrders(html) {
         }
         if (columnMap.reportedBy !== undefined && cells[columnMap.reportedBy]) {
             reportedBy = cells[columnMap.reportedBy].trim();
+        }
+        if (columnMap.lapul !== undefined && cells[columnMap.lapul]) {
+            lapul = cells[columnMap.lapul].trim();
         }
  
         for (let i = 0; i < cells.length; i++) {
@@ -384,6 +389,7 @@ function parseWorkOrders(html) {
             rkInformation: rkInformation,
             serviceNo: serviceNo,
             reportedBy: reportedBy || sourceTicket,
+            lapul: lapul || '-',
             source: 'Scraper'
         };
 
