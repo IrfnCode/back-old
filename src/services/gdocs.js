@@ -964,13 +964,24 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
         // --- ROW 0: TITLE ROW ---
         const row0 = [];
-        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===']);
-        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===']);
-        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===']);
+        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===', '', '', '', '', '', '', '']);
+        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '', '']);
+        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '', '']);
         values.push(row0);
 
-        // Add formatting requests for Title row
-        const addTitleFormat = (colStart) => {
+        // Add formatting requests for Title row: Merge and Style
+        const addTitleFormat = (colStart, bgColor, textColor) => {
+            formattingRequests.push({
+                mergeCells: {
+                    range: {
+                        startRowIndex: 0,
+                        endRowIndex: 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
             formattingRequests.push({
                 repeatCell: {
                     range: {
@@ -981,16 +992,21 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                     },
                     cell: {
                         userEnteredFormat: {
-                            textFormat: { bold: true, fontSize: 13, foregroundColor: { red: 0.1, green: 0.1, blue: 0.1 } }
+                            backgroundColor: bgColor,
+                            textFormat: { bold: true, fontSize: 11, foregroundColor: textColor },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
                         }
                     },
-                    fields: 'userEnteredFormat.textFormat'
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
                 }
             });
         };
-        addTitleFormat(regColStart);
-        addTitleFormat(sqmColStart);
-        addTitleFormat(unspecColStart);
+        
+        // Soft backgrounds + matching text colors
+        addTitleFormat(regColStart, { red: 0.92, green: 0.96, blue: 0.98 }, { red: 0.11, green: 0.21, blue: 0.34 });
+        addTitleFormat(sqmColStart, { red: 0.91, green: 0.97, blue: 0.96 }, { red: 0.05, green: 0.35, blue: 0.29 });
+        addTitleFormat(unspecColStart, { red: 0.99, green: 0.95, blue: 0.91 }, { red: 0.55, green: 0.22, blue: 0.0 });
 
         // --- ROW 1: HEADERS ROW ---
         const row1 = [];
@@ -1020,9 +1036,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 }
             });
         };
-        addHeaderFormat(regColStart, { red: 0.12, green: 0.31, blue: 0.47 }); // Cool Blue (#1F4E78)
-        addHeaderFormat(sqmColStart, { red: 0.09, green: 0.36, blue: 0.20 }); // Emerald Green (#165B33)
-        addHeaderFormat(unspecColStart, { red: 0.78, green: 0.35, blue: 0.07 }); // Amber Orange (#C65907)
+        addHeaderFormat(regColStart, { red: 0.17, green: 0.24, blue: 0.31 }); // Professional Slate Gray (#2C3E50)
+        addHeaderFormat(sqmColStart, { red: 0.09, green: 0.63, blue: 0.52 }); // Forest Teal (#16A085)
+        addHeaderFormat(unspecColStart, { red: 0.83, green: 0.33, blue: 0.0 }); // Warm Bronze/Amber (#D35400)
 
         // --- DATA ROWS ---
         const formatRows = (tickets) => {
@@ -1058,152 +1074,131 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         const unspecRowMax = unspecData.length > 0 ? unspecData.length : 1;
         const totalDataRows = Math.max(regRowMax, sqmRowMax, unspecRowMax);
 
+        // Helper to format a table cell grid (border + soft zebra)
+        const addCellFormat = (rowIdx, colStart, isEven) => {
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: isEven ? { red: 0.98, green: 0.98, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                            textFormat: { fontSize: 10 },
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                }
+            });
+        };
+
+        // Helper for styling "Tidak ada data" rows cleanly
+        const addNoDataFormat = (rowIdx, colStart) => {
+            formattingRequests.push({
+                mergeCells: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: { red: 0.98, green: 0.98, blue: 0.98 },
+                            textFormat: { italic: true, fontSize: 10, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.borders'
+                }
+            });
+        };
+
         for (let r = 0; r < totalDataRows; r++) {
             const dataRow = [];
+            const isEven = r % 2 === 0;
 
             // 1. Reguler Column fill
             if (regData.length === 0 && r === 0) {
-                setRowCells(dataRow, regColStart, ['Tidak ada data']);
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2,
-                            endRowIndex: 3,
-                            startColumnIndex: regColStart,
-                            endColumnIndex: regColStart + 1
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
-                            }
-                        },
-                        fields: 'userEnteredFormat.textFormat'
-                    }
-                });
+                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, regColStart);
             } else if (r < regData.length) {
                 setRowCells(dataRow, regColStart, regData[r]);
-                const isEven = r % 2 === 0;
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2 + r,
-                            endRowIndex: 2 + r + 1,
-                            startColumnIndex: regColStart,
-                            endColumnIndex: regColStart + colWidth
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
-                                textFormat: { fontSize: 10 },
-                                borders: {
-                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
-                                }
-                            }
-                        },
-                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
-                    }
-                });
+                addCellFormat(2 + r, regColStart, isEven);
             }
 
             // 2. SQM Column fill
             if (sqmData.length === 0 && r === 0) {
-                setRowCells(dataRow, sqmColStart, ['Tidak ada data']);
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2,
-                            endRowIndex: 3,
-                            startColumnIndex: sqmColStart,
-                            endColumnIndex: sqmColStart + 1
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
-                            }
-                        },
-                        fields: 'userEnteredFormat.textFormat'
-                    }
-                });
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, sqmColStart);
             } else if (r < sqmData.length) {
                 setRowCells(dataRow, sqmColStart, sqmData[r]);
-                const isEven = r % 2 === 0;
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2 + r,
-                            endRowIndex: 2 + r + 1,
-                            startColumnIndex: sqmColStart,
-                            endColumnIndex: sqmColStart + colWidth
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
-                                textFormat: { fontSize: 10 },
-                                borders: {
-                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
-                                }
-                            }
-                        },
-                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
-                    }
-                });
+                addCellFormat(2 + r, sqmColStart, isEven);
             }
 
             // 3. UNSPEC Column fill
             if (unspecData.length === 0 && r === 0) {
-                setRowCells(dataRow, unspecColStart, ['Tidak ada data']);
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2,
-                            endRowIndex: 3,
-                            startColumnIndex: unspecColStart,
-                            endColumnIndex: unspecColStart + 1
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                textFormat: { italic: true, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } }
-                            }
-                        },
-                        fields: 'userEnteredFormat.textFormat'
-                    }
-                });
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, unspecColStart);
             } else if (r < unspecData.length) {
                 setRowCells(dataRow, unspecColStart, unspecData[r]);
-                const isEven = r % 2 === 0;
-                formattingRequests.push({
-                    repeatCell: {
-                        range: {
-                            startRowIndex: 2 + r,
-                            endRowIndex: 2 + r + 1,
-                            startColumnIndex: unspecColStart,
-                            endColumnIndex: unspecColStart + colWidth
-                        },
-                        cell: {
-                            userEnteredFormat: {
-                                backgroundColor: isEven ? { red: 0.96, green: 0.97, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
-                                textFormat: { fontSize: 10 },
-                                borders: {
-                                    top: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    left: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } },
-                                    right: { style: 'SOLID', width: 1, color: { red: 0.85, green: 0.85, blue: 0.85 } }
-                                }
-                            }
-                        },
-                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
-                    }
-                });
+                addCellFormat(2 + r, unspecColStart, isEven);
             }
 
             values.push(dataRow);
         }
+
+        // --- COLUMNS DIMENSION CONFIGURATION ---
+        const colWidths = [
+            45,  125, 115, 115, 115, 145, 95, 135, // Reguler (0-7)
+            30,                                    // Spacing separator (8)
+            45,  125, 115, 115, 115, 145, 95, 135, // SQM (9-16)
+            30,                                    // Spacing separator (17)
+            45,  125, 115, 115, 115, 145, 95, 135  // UNSPEC (18-25)
+        ];
+
+        colWidths.forEach((width, idx) => {
+            formattingRequests.push({
+                updateDimensionProperties: {
+                    range: {
+                        dimension: 'COLUMNS',
+                        startIndex: idx,
+                        endIndex: idx + 1
+                    },
+                    properties: {
+                        pixelSize: width
+                    },
+                    fields: 'pixelSize'
+                }
+            });
+        });
 
         // Clear all columns from A to Z first
         try {
@@ -1232,6 +1227,12 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 if (req.repeatCell && req.repeatCell.range) {
                     req.repeatCell.range.sheetId = sheetId;
                 }
+                if (req.mergeCells && req.mergeCells.range) {
+                    req.mergeCells.range.sheetId = sheetId;
+                }
+                if (req.updateDimensionProperties && req.updateDimensionProperties.range) {
+                    req.updateDimensionProperties.range.sheetId = sheetId;
+                }
             });
 
             await sheets.spreadsheets.batchUpdate({
@@ -1249,3 +1250,4 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
         throw error;
     }
 }
+
