@@ -95,45 +95,44 @@ function registerGangguanHandlers(bot) {
     // Handle /start command
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
-        bot.sendMessage(chatId,
-`🤖 *Work Order Bot (Gangguan) Aktif!*
+        const helpText =
+`🤖 <b>Work Order Bot (Gangguan) Aktif!</b>
 
-Halo\! Bot MORENA siap membantu memantau tiket Insera\.
-Chat ID Anda: \`${chatId}\`
+Halo! Bot MORENA siap membantu memantau tiket Insera.
+Chat ID Anda: <code>${chatId}</code>
 
 ━━━━━━━━━━━━━━━━━━━━━
-📋 *DAFTAR COMMAND*
+📋 <b>DAFTAR COMMAND</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-*📊 INFO & STATUS*
-/start \- Tampilkan menu ini
-/status \- Cek status bot
-/help \- Bantuan lengkap
+<b>📊 INFO &amp; STATUS</b>
+/start - Tampilkan menu ini
+/status - Cek status bot
+/help - Bantuan lengkap
 
-*🎫 TIKET*
-/tiketaktif \- Tiket aktif per STO
-/info \[INC\] \- Detail summary tiket
-/caritiket \[no\.internet\] \- Cari tiket by service no
+<b>🎫 TIKET</b>
+/tiketaktif - Tiket aktif per STO
+/info [INC] - Detail summary tiket
+/caritiket [no.internet] - Cari tiket by service no
 
-*📝 INPUT REKAP*
-/input \- Input rekap close gangguan
-/unspec \- Input rekap UNSPEC
-/tangible \- Input rekap TANGIBLE
-/mtc \- Input rekap Maintenance
+<b>📝 INPUT REKAP</b>
+/input - Input rekap close gangguan
+/unspec - Input rekap UNSPEC
+/tangible - Input rekap TANGIBLE
+/mtc - Input rekap Maintenance
 
-*📊 GOOGLE SPREADSHEET*
-/scrapsheet \- Scraping \& ekspor sekali
-/scrapsheetauto \[menit\] \- Mulai auto\-scraping \(default 60 mnt\)
-/scrapsheetstop \- Hentikan auto\-scraping
-/scrapsheetstatus \- Cek status auto\-scraping
+<b>📊 GOOGLE SPREADSHEET</b>
+/scrapsheet - Scraping &amp; ekspor sekali
+/scrapsheetauto [menit] - Mulai auto-scraping (default 60 mnt)
+/scrapsheetstop - Hentikan auto-scraping
+/scrapsheetstatus - Cek status auto-scraping
 
-*⚙️ LAINNYA*
-/jadwal \- Cek jadwal teknisi
-/del \- Hapus pesan bot
-/admin \- Panel mode AI
-━━━━━━━━━━━━━━━━━━━━━`,
-            { parse_mode: 'MarkdownV2' }
-        );
+<b>⚙️ LAINNYA</b>
+/jadwal - Cek jadwal teknisi
+/del - Hapus pesan bot
+/admin - Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`;
+        bot.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
     });
 
     // Handle /status command
@@ -151,42 +150,42 @@ Chat ID: \`${chatId}\``,
 
     bot.onText(/\/help/, (msg) => {
         const chatId = msg.chat.id;
-        bot.sendMessage(chatId,
-`📚 *Work Order Bot \- Bantuan Lengkap*
-Chat ID: \`${chatId}\`
+        const helpText =
+`📚 <b>Work Order Bot - Bantuan Lengkap</b>
+Chat ID: <code>${chatId}</code>
 
 ━━━━━━━━━━━━━━━━━━━━━
-📋 *DAFTAR COMMAND*
+📋 <b>DAFTAR COMMAND</b>
 ━━━━━━━━━━━━━━━━━━━━━
 
-*📊 INFO & STATUS*
-/start \- Tampilkan menu utama
-/status \- Cek status bot
-/help \- Bantuan lengkap
+<b>📊 INFO &amp; STATUS</b>
+/start - Tampilkan menu utama
+/status - Cek status bot
+/help - Bantuan lengkap
 
-*🎫 TIKET*
-/tiketaktif \- Tiket aktif per STO
-/info \[INC\] \- Detail summary tiket
-/caritiket \[no\.internet\] \- Cari tiket by service no
+<b>🎫 TIKET</b>
+/tiketaktif - Tiket aktif per STO
+/info [INC] - Detail summary tiket
+/caritiket [no.internet] - Cari tiket by service no
 
-*📝 INPUT REKAP*
-/input \- Input rekap close gangguan
-/unspec \- Input rekap UNSPEC
-/tangible \- Input rekap TANGIBLE
-/mtc \- Input rekap Maintenance
+<b>📝 INPUT REKAP</b>
+/input - Input rekap close gangguan
+/unspec - Input rekap UNSPEC
+/tangible - Input rekap TANGIBLE
+/mtc - Input rekap Maintenance
 
-*📊 GOOGLE SPREADSHEET*
-/scrapsheet \- Scraping \& ekspor sekali
-/scrapsheetauto \[menit\] \- Mulai auto\-scraping \(default 60 mnt\)
-/scrapsheetstop \- Hentikan auto\-scraping
-/scrapsheetstatus \- Cek status auto\-scraping
+<b>📊 GOOGLE SPREADSHEET</b>
+/scrapsheet - Scraping &amp; ekspor sekali
+/scrapsheetauto [menit] - Mulai auto-scraping (default 60 mnt)
+/scrapsheetstop - Hentikan auto-scraping
+/scrapsheetstatus - Cek status auto-scraping
 
-*⚙️ LAINNYA*
-/jadwal \- Cek jadwal teknisi
-/del \- Hapus pesan bot
-/admin \- Panel mode AI
-━━━━━━━━━━━━━━━━━━━━━`,
-        );
+<b>⚙️ LAINNYA</b>
+/jadwal - Cek jadwal teknisi
+/del - Hapus pesan bot
+/admin - Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`;
+        bot.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
     });
 
     // AI Processing Lock
