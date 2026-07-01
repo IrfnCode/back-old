@@ -278,10 +278,6 @@ function parseWorkOrders(html) {
             if (cell.match(/^(OPEN|IN_PROGRESS|BACKEND|CLOSED|RESOLVED|CANCELLED)$/i)) {
                 status = cell.toUpperCase();
             }
-            // Workzone pattern (like TPI, KMS, TUB, KIJ)
-            if (cell.match(/^[A-Z]{3}$/)) {
-                workzone = cell;
-            }
             // Customer segment pattern (like PL-TSEL, DGS, ENTERPRISE, PERSONAL, PEMERINTAH, etc.)
             if (cell.match(/^(PL-TSEL|DGS|DBS|DES|DSS|DPS|ENTERPRISE|PERSONAL|PEMERINTAH|WHOLESALE|BUSINESS|CONSUMER|GOVERNMENT|SOE|MEDIUM|SMALL)$/i)) {
                 customerSegment = cell.toUpperCase();
@@ -294,6 +290,22 @@ function parseWorkOrders(html) {
             if (!serviceNo && cell.match(/^(111|12|13|14|15|16|17|18|19)\d{9}$/)) {
                 serviceNo = cell;
             }
+        }
+
+        // Extract workzone from deviceName (ODP) or rkInformation (ODC) to prevent false matches from customer names
+        const searchWz = (str) => {
+            if (!str) return null;
+            const parts = str.toUpperCase().split(/[^A-Z]/);
+            for (const part of parts) {
+                if (part.length === 3 && part !== 'ODP' && part !== 'ODC') {
+                    return part;
+                }
+            }
+            return null;
+        };
+        const extractedWz = searchWz(deviceName) || searchWz(rkInformation);
+        if (extractedWz) {
+            workzone = extractedWz;
         }
  
         const ticket = {
