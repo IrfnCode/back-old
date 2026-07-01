@@ -186,6 +186,7 @@ function parseWorkOrders(html, options = {}) {
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
                 if (text.includes('lapul')) columnMap.lapul = i;
+                if (text.includes('gaul')) columnMap.gaul = i;
                 if (text.includes('actual') && (text.includes('solution') || text.includes('description') || text.includes('solusi'))) columnMap.actualSolution = i;
                 if (text.includes('technician') || text.includes('petugas') || (text.includes('closed') && text.includes('by'))) columnMap.technician = i;
             });
@@ -289,6 +290,7 @@ function parseWorkOrders(html, options = {}) {
         let serviceNo = null;
         let reportedBy = null;
         let lapul = '-';
+        let gaul = '-';
         let actualSolution = '-';
         let technician = '-';
  
@@ -329,6 +331,9 @@ function parseWorkOrders(html, options = {}) {
         }
         if (columnMap.lapul !== undefined && cells[columnMap.lapul]) {
             lapul = cells[columnMap.lapul].trim();
+        }
+        if (columnMap.gaul !== undefined && cells[columnMap.gaul]) {
+            gaul = cells[columnMap.gaul].trim();
         }
         if (columnMap.actualSolution !== undefined && cells[columnMap.actualSolution]) {
             actualSolution = cells[columnMap.actualSolution].trim();
@@ -400,6 +405,7 @@ function parseWorkOrders(html, options = {}) {
             serviceNo: serviceNo,
             reportedBy: reportedBy || sourceTicket,
             lapul: lapul || '-',
+            gaul: gaul || '-',
             actualSolution: actualSolution || '-',
             technician: technician || '-',
             source: 'Scraper'

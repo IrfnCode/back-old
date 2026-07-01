@@ -1065,7 +1065,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
                 const summaryVal = wo.summary || wo.description || '-';
                 const custType = wo.customerType || wo.customer_type || 'REGULER';
-                const gaul = extractGaulFromSummary(wo.summary || wo.description || '');
+                const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
                 const lapul = wo.lapul !== undefined ? wo.lapul : '-';
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
@@ -1344,7 +1344,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 const serviceNo = wo.serviceNo || wo.service_no || '-';
                 const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
                 const custType = wo.customerType || wo.customer_type || 'REGULER';
-                const gaul = extractGaulFromSummary(wo.summary || wo.description || '');
+                const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
                 const lapul = wo.lapul !== undefined ? wo.lapul : '-';
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
