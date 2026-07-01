@@ -359,7 +359,7 @@ Chat ID Anda: \`${chatId}\`
             const now = new Date();
             const dateTo = getWIBString(now) + ' 23:59';
             const pastDate = new Date();
-            pastDate.setDate(now.getDate() - 3); // 3 days range
+            pastDate.setDate(now.getDate() - 2); // 2 days range (e.g. June 29 to July 1)
             const dateFrom = getWIBString(pastDate) + ' 00:00';
 
             // Endpoint khusus untuk /tiketaktif sesuai permintaan dengan filter tanggal dinamis, workzone terupdate, dan page size dibatasi ke 30 agar tidak overlimit
