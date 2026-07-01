@@ -357,7 +357,7 @@ Chat ID Anda: \`${chatId}\`
                 return `${year}-${month}-${date}`;
             };
             const now = new Date();
-            const dateTo = getWIBString(now) + ' 23:00';
+            const dateTo = getWIBString(now) + ' 23:59';
             const pastDate = new Date();
             pastDate.setDate(now.getDate() - 3); // 3 days range
             const dateFrom = getWIBString(pastDate) + ' 00:00';
