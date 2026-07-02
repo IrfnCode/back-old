@@ -411,8 +411,8 @@ Chat ID: <code>${chatId}</code>
         const { scrapeProactiveAndReguler, scrapeClosedTickets } = await import('./scraper.js');
 
         const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
-        const openSheetName = 'DATA TIKET OPEN';
-        const closedSheetName = 'DATA TIKET CLOSE';
+        const openSheetName = 'TIKET OPEN';
+        const closedSheetName = 'TIKET CLOSE';
 
         // Build dynamic WIB date range (2 days ago → today) for active
         const toWIBDate = (d) => {
@@ -499,7 +499,7 @@ Chat ID: <code>${chatId}</code>
                 `🔸 <b>SQM (Open):</b> ${data.sqm.length} tiket\n` +
                 `🔹 <b>UNSPEC (Open):</b> ${data.unspec.length} tiket\n` +
                 `✅ <b>Closed Baru:</b> ${data.closedCount} tiket (Total di sheet: ${data.totalClosedCount})\n\n` +
-                `📝 Sheet: <b>DATA TIKET OPEN</b> &amp; <b>DATA TIKET CLOSE</b>\n` +
+                `📝 Sheet: <b>TIKET OPEN</b> &amp; <b>TIKET CLOSE</b>\n` +
                 `🔗 <a href="${link}">Buka Google Spreadsheet</a>`,
                 { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML', disable_web_page_preview: true }
             );

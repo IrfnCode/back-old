@@ -1389,7 +1389,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         // Rebuild values array
         const values = [];
         // Row 0: Title
-        const titleRow = ['=== DATA TIKET CLOSE ==='];
+        const titleRow = ['=== TIKET CLOSE ==='];
         while (titleRow.length < colWidth) titleRow.push('');
         values.push(titleRow);
 
