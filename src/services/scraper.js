@@ -842,7 +842,7 @@ async function getScrapePage() {
         }
 
         ownBrowser = await puppeteer.launch({
-            headless: 'new',
+            headless: true,
             executablePath: executablePath,
             userDataDir: userDataDir,
             args: [
@@ -852,7 +852,11 @@ async function getScrapePage() {
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
                 '--no-first-run',
-                '--no-zygote'
+                '--no-zygote',
+                '--single-process',
+                '--disable-features=Vulkan',
+                '--disable-gpu-sandbox',
+                '--disable-software-rasterizer'
             ],
             defaultViewport: {
                 width: 1280,
