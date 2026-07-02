@@ -1862,44 +1862,75 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             }
         });
 
-        // Table Headers formatting
-        formattingRequests.push({
-            repeatCell: {
-                range: { sheetId, startRowIndex: 7, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 5 },
-                cell: {
-                    userEnteredFormat: {
-                        backgroundColor: { red: 0.2, green: 0.2, blue: 0.2 },
-                        textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 9 },
-                        horizontalAlignment: 'CENTER',
-                        verticalAlignment: 'MIDDLE'
-                    }
-                },
-                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
-            }
+        // Table Headers formatting (Color-coded per ticket type)
+        const headerColors = [
+            { red: 0.2, green: 0.2, blue: 0.2 },      // Column A: WORKZONE (Dark Charcoal)
+            { red: 0.17, green: 0.24, blue: 0.31 },   // Column B: OPEN REGULER (Slate Blue)
+            { red: 0.09, green: 0.63, blue: 0.52 },   // Column C: OPEN SQM (Forest Teal)
+            { red: 0.83, green: 0.33, blue: 0.0 },    // Column D: OPEN UNSPEC (Warm Amber)
+            { red: 0.4, green: 0.4, blue: 0.4 }       // Column E: TIKET CLOSE (Gray)
+        ];
+
+        headerColors.forEach((color, colIdx) => {
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: 7, endRowIndex: 8, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: color,
+                            textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 9 },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
         });
+
+        // Soft backgrounds for columns (Zebra striped with respective colors)
+        const columnBgEven = [
+            { red: 0.98, green: 0.98, blue: 0.98 },   // Col A: WORKZONE (Light Gray)
+            { red: 0.94, green: 0.96, blue: 0.98 },   // Col B: OPEN REGULER (Soft Slate Blue)
+            { red: 0.93, green: 0.97, blue: 0.96 },   // Col C: OPEN SQM (Soft Teal)
+            { red: 0.99, green: 0.95, blue: 0.92 },   // Col D: OPEN UNSPEC (Soft Warm Orange)
+            { red: 0.96, green: 0.96, blue: 0.96 }    // Col E: TIKET CLOSE (Soft Gray)
+        ];
+        const columnBgOdd = [
+            { red: 1.0, green: 1.0, blue: 1.0 },      // Col A
+            { red: 0.97, green: 0.98, blue: 0.99 },   // Col B
+            { red: 0.96, green: 0.99, blue: 0.98 },   // Col C
+            { red: 1.0, green: 0.97, blue: 0.95 },    // Col D
+            { red: 0.98, green: 0.98, blue: 0.98 }    // Col E
+        ];
 
         // Table Rows formatting
         for (let i = 0; i < workzones.length; i++) {
             const rowIdx = 8 + i;
             const isEven = i % 2 === 0;
-            formattingRequests.push({
-                repeatCell: {
-                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 0, endColumnIndex: 5 },
-                    cell: {
-                        userEnteredFormat: {
-                            backgroundColor: isEven ? { red: 0.98, green: 0.98, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
-                            textFormat: { fontSize: 9 },
-                            borders: {
-                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
-                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
-                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
-                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+
+            for (let colIdx = 0; colIdx < 5; colIdx++) {
+                const bgColor = isEven ? columnBgEven[colIdx] : columnBgOdd[colIdx];
+                formattingRequests.push({
+                    repeatCell: {
+                        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: bgColor,
+                                textFormat: { fontSize: 9 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                                }
                             }
-                        }
-                    },
-                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
-                }
-            });
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            }
+
             // Align columns B-E to center
             formattingRequests.push({
                 repeatCell: {
