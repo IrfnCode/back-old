@@ -1709,10 +1709,10 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         values.push([]);
 
         // Row 6 (index 6): Workzone Table Title
-        values.push(['📋 RINGKASAN TIKET PER WORKZONE', '', '']);
+        values.push(['📋 RINGKASAN TIKET PER WORKZONE', '', '', '', '']);
 
         // Row 7 (index 7): Workzone Table Headers
-        values.push(['WORKZONE', 'TIKET OPEN', 'TIKET CLOSE']);
+        values.push(['WORKZONE', 'OPEN REGULER', 'OPEN SQM', 'OPEN UNSPEC', 'TIKET CLOSE']);
 
         // Row 8-15 (index 8-15): Workzone Data
         const workzones = ['KIJ', 'KMS', 'TPI', 'TUB', 'RAI', 'TER', 'DBS', 'PYT'];
@@ -1720,13 +1720,15 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             const rowIdx = 9 + idx; // 1-based row index in Google Sheet
             values.push([
                 wz,
-                `=COUNTIF('TIKET OPEN'!H$3:H; A${rowIdx}) + COUNTIF('TIKET OPEN'!R$3:R; A${rowIdx}) + COUNTIF('TIKET OPEN'!AA$3:AA; A${rowIdx})`,
+                `=COUNTIF('TIKET OPEN'!H$3:H; A${rowIdx})`,
+                `=COUNTIF('TIKET OPEN'!R$3:R; A${rowIdx})`,
+                `=COUNTIF('TIKET OPEN'!AA$3:AA; A${rowIdx})`,
                 `=COUNTIF('TIKET CLOSE'!H$3:H; A${rowIdx})`
             ]);
         });
 
         // Row 16 (index 16): Grand Total
-        values.push(['Grand Total', '=SUM(B9:B16)', '=SUM(C9:C16)']);
+        values.push(['Grand Total', '=SUM(B9:B16)', '=SUM(C9:C16)', '=SUM(D9:D16)', '=SUM(E9:E16)']);
 
         // Write all values
         await sheets.spreadsheets.values.update({
@@ -1841,13 +1843,13 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         // Workzone Table Title formatting
         formattingRequests.push({
             mergeCells: {
-                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 3 },
+                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 5 },
                 mergeType: 'MERGE_ALL'
             }
         });
         formattingRequests.push({
             repeatCell: {
-                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 3 },
+                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 5 },
                 cell: {
                     userEnteredFormat: {
                         backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 },
@@ -1863,7 +1865,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         // Table Headers formatting
         formattingRequests.push({
             repeatCell: {
-                range: { sheetId, startRowIndex: 7, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 3 },
+                range: { sheetId, startRowIndex: 7, endRowIndex: 8, startColumnIndex: 0, endColumnIndex: 5 },
                 cell: {
                     userEnteredFormat: {
                         backgroundColor: { red: 0.2, green: 0.2, blue: 0.2 },
@@ -1882,7 +1884,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             const isEven = i % 2 === 0;
             formattingRequests.push({
                 repeatCell: {
-                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 0, endColumnIndex: 3 },
+                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 0, endColumnIndex: 5 },
                     cell: {
                         userEnteredFormat: {
                             backgroundColor: isEven ? { red: 0.98, green: 0.98, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
@@ -1898,10 +1900,10 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
                     fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
                 }
             });
-            // Align column B and C to center
+            // Align columns B-E to center
             formattingRequests.push({
                 repeatCell: {
-                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 1, endColumnIndex: 3 },
+                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 1, endColumnIndex: 5 },
                     cell: {
                         userEnteredFormat: {
                             horizontalAlignment: 'CENTER'
@@ -1915,7 +1917,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         // Grand Total formatting
         formattingRequests.push({
             repeatCell: {
-                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 0, endColumnIndex: 3 },
+                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 0, endColumnIndex: 5 },
                 cell: {
                     userEnteredFormat: {
                         backgroundColor: { red: 0.9, green: 0.9, blue: 0.9 },
@@ -1931,7 +1933,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         });
         formattingRequests.push({
             repeatCell: {
-                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 1, endColumnIndex: 3 },
+                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 1, endColumnIndex: 5 },
                 cell: {
                     userEnteredFormat: {
                         horizontalAlignment: 'CENTER'
@@ -1942,7 +1944,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         });
 
         // Set column widths
-        const colWidths = [120, 100, 100, 30, 120, 120, 120, 120, 120, 120];
+        const colWidths = [120, 110, 110, 110, 110, 30, 120, 120, 120, 120];
         colWidths.forEach((width, idx) => {
             formattingRequests.push({
                 updateDimensionProperties: {
@@ -1958,7 +1960,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             addChart: {
                 chart: {
                     spec: {
-                        title: 'DISTRIBUSI TIKET PER WORKZONE (OPEN VS CLOSE)',
+                        title: 'DISTRIBUSI TIKET PER WORKZONE',
                         basicChart: {
                             chartType: 'COLUMN',
                             legendPosition: 'BOTTOM_LEGEND',
@@ -1987,7 +1989,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
                                         sourceRange: {
                                             sources: [{
                                                 sheetId,
-                                                startRowIndex: 7,  // Header 'TIKET OPEN'
+                                                startRowIndex: 7,  // Header 'OPEN REGULER'
                                                 endRowIndex: 16,
                                                 startColumnIndex: 1,
                                                 endColumnIndex: 2
@@ -2001,10 +2003,38 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
                                         sourceRange: {
                                             sources: [{
                                                 sheetId,
-                                                startRowIndex: 7,  // Header 'TIKET CLOSE'
+                                                startRowIndex: 7,  // Header 'OPEN SQM'
                                                 endRowIndex: 16,
                                                 startColumnIndex: 2,
                                                 endColumnIndex: 3
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                },
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'OPEN UNSPEC'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 3,
+                                                endColumnIndex: 4
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                },
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'TIKET CLOSE'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 4,
+                                                endColumnIndex: 5
                                             }]
                                         }
                                     },
@@ -2018,7 +2048,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
                             anchorCell: {
                                 sheetId,
                                 rowIndex: 6,
-                                columnIndex: 4 // Column E
+                                columnIndex: 6 // Column G (to avoid overlapping wider table)
                             },
                             offsetXPixels: 10,
                             offsetYPixels: 5
