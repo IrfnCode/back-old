@@ -842,7 +842,7 @@ async function getScrapePage() {
         }
 
         ownBrowser = await puppeteer.launch({
-            headless: true,
+            headless: 'shell',
             executablePath: executablePath,
             userDataDir: userDataDir,
             args: [
