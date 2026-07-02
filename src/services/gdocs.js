@@ -1315,15 +1315,15 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         try {
             const response = await sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `${sheetName}!A:N`
+                range: `${sheetName}!A:O`
             });
             existingRows = response.data.values || [];
         } catch (e) {
             console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
         }
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
-        const colWidth = headers.length; // 14
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
+        const colWidth = headers.length; // 15
 
         // Keep track of INC numbers already present in the sheet
         const seenIncs = new Set();
@@ -1355,6 +1355,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
                 const reportedDate = wo.reportedDate || '-';
+                const resolveDate = wo.resolveDate || '-';
                 const actualSolution = wo.actualSolution || '-';
                 const technician = wo.technician || '-';
                 const summaryVal = wo.summary || wo.description || '-';
@@ -1371,6 +1372,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     wz,
                     bookingDate,
                     reportedDate,
+                    resolveDate,
                     actualSolution,
                     technician,
                     summaryVal,
@@ -1541,7 +1543,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         // Set column widths
         const colWidths = [
             45,  125, 115, 115, 115, 145, 75,  95, 135, // A-I (NO ~ BOOKING DATE)
-            135, 250, 150, 280, 115                     // J (Reported Date), K (Actual Solution), L (Technician), M (Summary), N (Source Ticket)
+            135, 135, 250, 150, 280, 115                // J (Reported Date), K (Resolve Date), L (Actual Solution), M (Technician), N (Summary), O (Source Ticket)
         ];
 
         colWidths.forEach((width, idx) => {
@@ -1560,11 +1562,11 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             });
         });
 
-        // Clear range A:N
+        // Clear range A:O
         try {
             await sheets.spreadsheets.values.clear({
                 spreadsheetId,
-                range: `${sheetName}!A:N`
+                range: `${sheetName}!A:O`
             });
         } catch (e) {}
 
