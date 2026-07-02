@@ -955,13 +955,13 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             }
         });
 
-        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE'];
-        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE'];
-        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE'];
+        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
+        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SOURCE TICKET'];
+        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
         
-        const regColWidth = regHeaders.length; // 9
-        const sqmColWidth = sqmHeaders.length; // 7
-        const unspecColWidth = unspecHeaders.length; // 7
+        const regColWidth = regHeaders.length; // 11
+        const sqmColWidth = sqmHeaders.length; // 8
+        const unspecColWidth = unspecHeaders.length; // 9
         const spacing = 1; // 1 empty column separator
 
         // Column indexes
@@ -1069,6 +1069,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 const lapul = wo.lapul !== undefined ? wo.lapul : '-';
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
+                const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
 
                 if (type === 'reguler') {
                     return [
@@ -1080,7 +1081,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         gaul,
                         lapul,
                         wz,
-                        bookingDate
+                        bookingDate,
+                        summaryVal,
+                        srcTicket
                     ];
                 } else if (type === 'sqm') {
                     return [
@@ -1090,7 +1093,8 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         summaryVal,
                         custType,
                         wz,
-                        bookingDate
+                        bookingDate,
+                        srcTicket
                     ];
                 } else {
                     return [
@@ -1100,7 +1104,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         ttr,
                         custType,
                         wz,
-                        bookingDate
+                        bookingDate,
+                        summaryVal,
+                        srcTicket
                     ];
                 }
             });
@@ -1189,7 +1195,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 1. Reguler Column fill
             if (regData.length === 0 && r === 0) {
-                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
+                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, regColStart, regColWidth);
             } else if (r < regData.length) {
                 setRowCells(dataRow, regColStart, regData[r]);
@@ -1198,7 +1204,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 2. SQM Column fill
             if (sqmData.length === 0 && r === 0) {
-                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '']);
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, sqmColStart, sqmColWidth);
             } else if (r < sqmData.length) {
                 setRowCells(dataRow, sqmColStart, sqmData[r]);
@@ -1207,7 +1213,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 3. UNSPEC Column fill
             if (unspecData.length === 0 && r === 0) {
-                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '']);
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, unspecColStart, unspecColWidth);
             } else if (r < unspecData.length) {
                 setRowCells(dataRow, unspecColStart, unspecData[r]);
@@ -1219,11 +1225,11 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
         // --- COLUMNS DIMENSION CONFIGURATION ---
         const colWidths = [
-            45,  125, 115, 115, 115, 145, 75,  95, 135, // Reguler (0-8)
-            30,                                         // Spacing separator (9)
-            45,  125, 115, 280, 115, 95,  135,          // SQM (10-16) - Removed GAUL and LAPUL
-            30,                                         // Spacing separator (17)
-            45,  125, 115, 115, 115, 95,  135           // UNSPEC (18-24) - Removed GAUL and LAPUL
+            45,  125, 115, 115, 115, 145, 75,  95, 135, 280, 115, // Reguler (0-10): +SUMMARY, +SOURCE TICKET
+            30,                                                    // Spacing separator (11)
+            45,  125, 115, 280, 115, 95,  135, 115,               // SQM (12-19): +SOURCE TICKET
+            30,                                                    // Spacing separator (20)
+            45,  125, 115, 115, 115, 95,  135, 280, 115           // UNSPEC (21-29): +SUMMARY, +SOURCE TICKET
         ];
 
         colWidths.forEach((width, idx) => {
@@ -1309,14 +1315,14 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         try {
             const response = await sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `${sheetName}!A:L`
+                range: `${sheetName}!A:N`
             });
             existingRows = response.data.values || [];
         } catch (e) {
             console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
         }
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN'];
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
         const colWidth = headers.length; // 12
 
         // Keep track of INC numbers already present
@@ -1351,6 +1357,8 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 const reportedDate = wo.reportedDate || '-';
                 const actualSolution = wo.actualSolution || '-';
                 const technician = wo.technician || '-';
+                const summaryVal = wo.summary || wo.description || '-';
+                const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
 
                 // We will re-index NO later
                 existingData.push([
@@ -1365,7 +1373,9 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     bookingDate,
                     reportedDate,
                     actualSolution,
-                    technician
+                    technician,
+                    summaryVal,
+                    srcTicket
                 ]);
                 seenIncs.add(orderId);
             }
@@ -1531,8 +1541,8 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
 
         // Set column widths
         const colWidths = [
-            45,  125, 115, 115, 115, 145, 75,  95, 135, // A-I
-            135, 250, 150                               // J (Reported Date), K (Actual Solution), L (Technician)
+            45,  125, 115, 115, 115, 145, 75,  95, 135, // A-I (NO ~ BOOKING DATE)
+            135, 250, 150, 280, 115                     // J (Reported Date), K (Actual Solution), L (Technician), M (Summary), N (Source Ticket)
         ];
 
         colWidths.forEach((width, idx) => {
@@ -1551,11 +1561,11 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             });
         });
 
-        // Clear range A:L
+        // Clear range A:N
         try {
             await sheets.spreadsheets.values.clear({
                 spreadsheetId,
-                range: `${sheetName}!A:L`
+                range: `${sheetName}!A:N`
             });
         } catch (e) {}
 
