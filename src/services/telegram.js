@@ -410,7 +410,8 @@ Chat ID: <code>${chatId}</code>
         const { exportProactiveToSpreadsheet, exportClosedToSpreadsheet } = await import('./gdocs.js');
         const { scrapeProactiveAndReguler, scrapeClosedTickets } = await import('./scraper.js');
 
-        const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+        const config = getConfig();
+        const spreadsheetId = config?.gdocs_spreadsheet_id || '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
         const openSheetName = 'TIKET OPEN';
         const closedSheetName = 'TIKET CLOSE';
 
@@ -570,7 +571,8 @@ Chat ID: <code>${chatId}</code>
         const chatId = msg.chat.id;
         const { getScrapSheetStatus } = await import('./scraper.js');
         const status = getScrapSheetStatus();
-        const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+        const config = getConfig();
+        const spreadsheetId = config?.gdocs_spreadsheet_id || '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
         const link = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
 
         if (status.running) {
