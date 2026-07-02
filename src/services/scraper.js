@@ -772,7 +772,7 @@ export function formatWorkOrderMessage(wo) {
 async function getScrapePage() {
     // 1. Try to open a new tab in the active browser monitor instance
     const monitorBrowser = getBrowserInstance();
-    if (monitorBrowser) {
+    if (monitorBrowser && monitorBrowser.isConnected()) {
         console.log('📡 Opening a new tab in the active browser monitor...');
         try {
             const newPage = await monitorBrowser.newPage();
@@ -801,6 +801,15 @@ async function getScrapePage() {
     console.log('⚠️  4. Baru klik Run Scraper');
     console.log('⚠️ ============================================');
     console.log('');
+
+    // If ownBrowser is disconnected, clear it to force relaunch
+    if (ownBrowser && !ownBrowser.isConnected()) {
+        console.log('⚠️ Headless browser disconnected/crashed. Cleaning up to relaunch...');
+        try {
+            await ownBrowser.close();
+        } catch (e) {}
+        ownBrowser = null;
+    }
 
     // 2. If browser monitor is not running, create own headless browser
     if (!ownBrowser) {
