@@ -1192,16 +1192,20 @@ export function isScrapingRunning() {
  * Returns the updated work order object with address/coords
  */
 export async function scrapeSingleTicket(orderId) {
-    console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
-
-    // 1. Get browser page
-    const { page, isShared } = await getScrapePage();
-
-    // Ensure we are on the dashboard/base URL first or at least have the nav bar
-    const config = getConfig();
-    const baseUrl = config.targetUrl;
-
+    if (isScrapingNow) {
+        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
+    }
+    isScrapingNow = true;
     try {
+        console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
+
+        // 1. Get browser page
+        const { page, isShared } = await getScrapePage();
+
+        // Ensure we are on the dashboard/base URL first or at least have the nav bar
+        const config = getConfig();
+        const baseUrl = config.targetUrl;
+
         // If we are not on a page with the search bar, go to base URL
         let searchInput = await page.$('input[placeholder*="Find Incident"]');
 
@@ -1230,23 +1234,18 @@ export async function scrapeSingleTicket(orderId) {
 
 
         // Type to ensure events trigger, then Enter
-        await page.keyboard.type(orderId);
+        await page.type('input[placeholder*="Find Incident"]', orderId);
         await page.keyboard.press('Enter');
 
         console.log(`⏳ Searching for ${orderId}...`);
 
-        // 3. Wait for navigation or result
-        // The search might redirect to detail page OR filter the list.
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => console.log('⚠️ Navigation timeout or didn\'t happen, checking current state...'));
-
-        // 4. Check where we are
-        const url = page.url();
-        console.log(`📍 Current URL after search: ${url}`);
+        // 3. Wait for list to update or direct navigation
+        await new Promise(r => setTimeout(r, 2000));
 
         let uuid = null;
-        if (url.includes('_mode=edit') && url.includes('id=')) {
+        if (page.url().includes('_mode=edit') && page.url().includes('id=')) {
             // Likely detail page
-            const match = url.match(/id=([^&]+)/);
+            const match = page.url().match(/id=([^&]+)/);
             if (match) uuid = match[1];
         } else {
             // Maybe we are still on list page (filtered)?
@@ -1283,7 +1282,18 @@ export async function scrapeSingleTicket(orderId) {
         }
 
         if (!uuid) {
-            throw new Error(`Could not navigate to detail page for ${orderId}. Search might have returned no results.`);
+            throw new Error(`Ticket ${orderId} not found or could not get detail URL.`);
+        }
+
+        // 4. Double check login session before entering details
+        if (await isLoginPage(page)) {
+            console.log('🔐 Session expired on detail redirect. Logging back in...');
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                // Retry navigate to ticket
+                const detailUrl = `${baseUrl.replace(/\/allTicketList.*/, '')}/ticketIncidentService/_/allTicketList?_mode=edit&id=${uuid}`;
+                await page.goto(detailUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            }
         }
 
         console.log(`✅ On detail page for ${orderId} (UUID: ${uuid})`);
@@ -1308,6 +1318,8 @@ export async function scrapeSingleTicket(orderId) {
     } catch (error) {
         console.error(`❌ [Manual Scrape] Error for ${orderId}:`, error.message);
         throw error;
+    } finally {
+        isScrapingNow = false;
     }
 }
 
@@ -1461,8 +1473,12 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
 }
 
 export async function scrapeClosedTickets(closedUrl) {
-    const { page, isShared } = await getScrapePage();
+    if (isScrapingNow) {
+        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
+    }
+    isScrapingNow = true;
     try {
+        const { page, isShared } = await getScrapePage();
         console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
         await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1487,5 +1503,7 @@ export async function scrapeClosedTickets(closedUrl) {
     } catch (err) {
         console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
         throw err;
+    } finally {
+        isScrapingNow = false;
     }
 }
