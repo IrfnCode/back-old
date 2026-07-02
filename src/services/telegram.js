@@ -407,7 +407,7 @@ Chat ID: <code>${chatId}</code>
     // HELPER: build URLs and run scrape+export, return result summary
     // ─────────────────────────────────────────────────────────────
     const runScrapSheet = async () => {
-        const { exportProactiveToSpreadsheet, exportClosedToSpreadsheet } = await import('./gdocs.js');
+        const { exportProactiveToSpreadsheet, exportClosedToSpreadsheet, exportDashboardToSpreadsheet } = await import('./gdocs.js');
         const { scrapeProactiveAndReguler, scrapeClosedTickets } = await import('./scraper.js');
 
         const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
@@ -463,6 +463,11 @@ Chat ID: <code>${chatId}</code>
 
         await exportProactiveToSpreadsheet(spreadsheetId, openSheetName, openData.reguler, openData.sqm, openData.unspec);
         const exportClosedRes = await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, combinedClosedData);
+        try {
+            await exportDashboardToSpreadsheet(spreadsheetId, 'DASHBOARD');
+        } catch (dbErr) {
+            console.error('⚠️ Failed to generate DASHBOARD:', dbErr.message);
+        }
 
         return {
             reguler: openData.reguler,
