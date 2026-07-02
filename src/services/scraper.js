@@ -853,7 +853,11 @@ async function getScrapePage() {
                 '--disable-gpu',
                 '--disable-features=Vulkan',
                 '--disable-gpu-sandbox',
-                '--disable-software-rasterizer'
+                '--disable-software-rasterizer',
+                '--disable-widevine-cdm',
+                '--disable-component-update',
+                '--disable-bundled-ppapi-plugins',
+                '--disable-extensions'
             ],
             defaultViewport: {
                 width: 1280,
