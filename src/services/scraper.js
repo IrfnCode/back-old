@@ -851,9 +851,6 @@ async function getScrapePage() {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
                 '--disable-features=Vulkan',
                 '--disable-gpu-sandbox',
                 '--disable-software-rasterizer'

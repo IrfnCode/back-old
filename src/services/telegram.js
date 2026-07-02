@@ -500,7 +500,8 @@ Chat ID: <code>${chatId}</code>
             );
         } catch (err) {
             console.error('❌ /scrapsheet error:', err);
-            await bot.editMessageText(`❌ <b>Gagal:</b>\n${err.message}`,
+            const errStr = (err.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ <b>Gagal:</b>\n${errStr}`,
                 { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML' });
         }
     });
@@ -536,7 +537,8 @@ Chat ID: <code>${chatId}</code>
                     { parse_mode: 'HTML', disable_web_page_preview: true });
             } catch (err) {
                 console.error('❌ Auto ScrapSheet error:', err.message);
-                await bot.sendMessage(chatId, `⚠️ <b>Auto ScrapSheet error:</b> ${err.message}`, { parse_mode: 'HTML' });
+                const errStr = (err.message || '').slice(0, 1000);
+                await bot.sendMessage(chatId, `⚠️ <b>Auto ScrapSheet error:</b> ${errStr}`, { parse_mode: 'HTML' });
             }
         }, intervalMs);
 
@@ -758,7 +760,8 @@ Chat ID: <code>${chatId}</code>
             });
 
         } catch (error) {
-            await bot.editMessageText(`❌ Gagal mengambil data tiket aktif:\n${error.message}`, {
+            const errMsg = (error.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ Gagal mengambil data tiket aktif:\n${errMsg}`, {
                 chat_id: chatId,
                 message_id: loadingMsg.message_id
             });
