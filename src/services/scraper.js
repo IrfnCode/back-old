@@ -762,7 +762,20 @@ export function formatWorkOrderMessage(wo) {
  * otherwise creates a new headless browser with saved session
  */
 async function getScrapePage() {
-    // First, try to use the browser monitor's page (already logged in)
+    // 1. Try to open a new tab in the active browser monitor instance
+    const monitorBrowser = getBrowserInstance();
+    if (monitorBrowser) {
+        console.log('📡 Opening a new tab in the active browser monitor...');
+        try {
+            const newPage = await monitorBrowser.newPage();
+            await newPage.setViewport({ width: 1366, height: 768 });
+            return { page: newPage, isShared: false };
+        } catch (e) {
+            console.log('⚠️ Failed to open new tab in browser monitor, falling back to shared page:', e.message);
+        }
+    }
+
+    // Fallback: try to use the browser monitor's active page (already logged in)
     const monitorPage = getPageInstance();
     if (monitorPage) {
         console.log('📡 Using active browser monitor session (GOOD!)');
@@ -781,7 +794,7 @@ async function getScrapePage() {
     console.log('⚠️ ============================================');
     console.log('');
 
-    // If browser monitor is not running, create own headless browser
+    // 2. If browser monitor is not running, create own headless browser
     if (!ownBrowser) {
         console.log('🌐 Creating headless browser with saved session...');
 
@@ -829,12 +842,12 @@ async function getScrapePage() {
                 height: 800
             }
         });
-
-        ownPage = await ownBrowser.newPage();
         console.log('✅ Headless browser ready');
     }
 
-    return { page: ownPage, isShared: false };
+    // Always create a new tab in ownBrowser so that it can be closed by the caller safely!
+    const newPage = await ownBrowser.newPage();
+    return { page: newPage, isShared: false };
 }
 
 /**
