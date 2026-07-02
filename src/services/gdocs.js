@@ -1329,6 +1329,18 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         const seenIncs = new Set();
         const existingData = [];
 
+        const isShifted = (rowArr) => {
+            if (!rowArr || rowArr.length < 11) return false;
+            const val = (rowArr[10] || '').trim();
+            if (!val || val === '-') return false;
+            const hasYear = /\b\d{4}\b/.test(val);
+            const hasDateSlash = /\d{2}\/\d{2}/.test(val);
+            const hasDateDash = /\d{2}-\d{2}/.test(val);
+            const isDate = hasYear || hasDateSlash || hasDateDash;
+            const hasLetters = /[a-zA-Z]/.test(val);
+            return hasLetters && !isDate;
+        };
+
         // Parse existing data rows (skip Title at row 0 and Headers at row 1)
         if (existingRows.length > 2) {
             for (let i = 2; i < existingRows.length; i++) {
@@ -1337,7 +1349,27 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     const inc = row[1].trim();
                     if (inc && inc.match(/^INC\d+$/)) {
                         seenIncs.add(inc);
-                        existingData.push(row);
+                        
+                        let formattedRow = [...row];
+                        if (formattedRow.length <= 14 || isShifted(formattedRow)) {
+                            if (formattedRow.length >= 15) {
+                                // If already 15 columns but shifted, slice up to index 9, insert '-', then append the rest
+                                const firstPart = formattedRow.slice(0, 10);
+                                const restPart = formattedRow.slice(10);
+                                formattedRow = [...firstPart, '-', ...restPart];
+                            } else {
+                                // Just insert '-' at index 10
+                                formattedRow.splice(10, 0, '-');
+                            }
+                        }
+                        
+                        // Ensure exactly 15 columns
+                        while (formattedRow.length < 15) {
+                            formattedRow.push('-');
+                        }
+                        formattedRow = formattedRow.slice(0, 15);
+                        
+                        existingData.push(formattedRow);
                     }
                 }
             }
