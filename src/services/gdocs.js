@@ -1678,7 +1678,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         const values = [];
 
         // Row 0 (index 0): Title Row
-        const titleRow = ['=== DASHBOARD MONIT TIKET ==='];
+        const titleRow = ['📊 DASHBOARD MONITORING TIKET'];
         while (titleRow.length < 10) titleRow.push('');
         values.push(titleRow);
 
@@ -1694,13 +1694,13 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             'TOTAL CLOSED', ''
         ]);
 
-        // Row 3 (index 3): KPI values (formulas)
+        // Row 3 (index 3): KPI values (formulas using semicolon separator)
         values.push([
-            `=COUNTIF('TIKET OPEN'!B3:B, "INC*") + COUNTIF('TIKET OPEN'!N3:N, "INC*") + COUNTIF('TIKET OPEN'!W3:W, "INC*")`, '',
-            `=COUNTIF('TIKET OPEN'!B3:B, "INC*")`, '',
-            `=COUNTIF('TIKET OPEN'!N3:N, "INC*")`, '',
-            `=COUNTIF('TIKET OPEN'!W3:W, "INC*")`, '',
-            `=COUNTIF('TIKET CLOSE'!B3:B, "INC*")`, ''
+            `=COUNTIF('TIKET OPEN'!B3:B; "INC*") + COUNTIF('TIKET OPEN'!N3:N; "INC*") + COUNTIF('TIKET OPEN'!W3:W; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!B3:B; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!N3:N; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!W3:W; "INC*")`, '',
+            `=COUNTIF('TIKET CLOSE'!B3:B; "INC*")`, ''
         ]);
 
         // Row 4 (index 4): Spacer
@@ -1709,7 +1709,7 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         values.push([]);
 
         // Row 6 (index 6): Workzone Table Title
-        values.push(['=== RINGKASAN TIKET PER WORKZONE ===', '', '']);
+        values.push(['📋 RINGKASAN TIKET PER WORKZONE', '', '']);
 
         // Row 7 (index 7): Workzone Table Headers
         values.push(['WORKZONE', 'TIKET OPEN', 'TIKET CLOSE']);
@@ -1720,8 +1720,8 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
             const rowIdx = 9 + idx; // 1-based row index in Google Sheet
             values.push([
                 wz,
-                `=COUNTIF('TIKET OPEN'!H$3:H, A${rowIdx}) + COUNTIF('TIKET OPEN'!R$3:R, A${rowIdx}) + COUNTIF('TIKET OPEN'!AA$3:AA, A${rowIdx})`,
-                `=COUNTIF('TIKET CLOSE'!H$3:H, A${rowIdx})`
+                `=COUNTIF('TIKET OPEN'!H$3:H; A${rowIdx}) + COUNTIF('TIKET OPEN'!R$3:R; A${rowIdx}) + COUNTIF('TIKET OPEN'!AA$3:AA; A${rowIdx})`,
+                `=COUNTIF('TIKET CLOSE'!H$3:H; A${rowIdx})`
             ]);
         });
 
