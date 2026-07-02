@@ -1192,15 +1192,15 @@ export function isScrapingRunning() {
  * Returns the updated work order object with address/coords
  */
 export async function scrapeSingleTicket(orderId) {
-    if (isScrapingNow) {
-        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
-    }
-    isScrapingNow = true;
+    let scrapedPage = null;
+    let isPageShared = true;
     try {
         console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
 
         // 1. Get browser page
         const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
 
         // Ensure we are on the dashboard/base URL first or at least have the nav bar
         const config = getConfig();
@@ -1319,7 +1319,10 @@ export async function scrapeSingleTicket(orderId) {
         console.error(`❌ [Manual Scrape] Error for ${orderId}:`, error.message);
         throw error;
     } finally {
-        isScrapingNow = false;
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for manual scrape...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
     }
 }
 
@@ -1328,14 +1331,14 @@ export async function scrapeSingleTicket(orderId) {
  * Prevents overlapping with other scraper runs using isScrapingNow.
  */
 export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl) {
-    if (isScrapingNow) {
-        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
-    }
-    isScrapingNow = true;
+    let scrapedPage = null;
+    let isPageShared = true;
     try {
         console.log('🔍 [Scraper] Starting proactive & reguler scraping process...');
 
         const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
 
         // --- 1. SCRAPE REGULER TICKETS ---
         console.log(`🔍 [Scraper] Navigating to Reguler URL: ${regulerBaseUrl}`);
@@ -1468,17 +1471,20 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
         };
 
     } finally {
-        isScrapingNow = false;
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for proactive & reguler...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
     }
 }
 
 export async function scrapeClosedTickets(closedUrl) {
-    if (isScrapingNow) {
-        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
-    }
-    isScrapingNow = true;
+    let scrapedPage = null;
+    let isPageShared = true;
     try {
         const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
         console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
         await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -1504,6 +1510,9 @@ export async function scrapeClosedTickets(closedUrl) {
         console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
         throw err;
     } finally {
-        isScrapingNow = false;
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for closed tickets...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
     }
 }
