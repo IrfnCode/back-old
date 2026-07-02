@@ -1310,40 +1310,15 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         // Ensure the sheet exists
         await ensureSheetExists(sheets, spreadsheetId, sheetName);
 
-        // 1. Read existing values
-        let existingRows = [];
-        try {
-            const response = await sheets.spreadsheets.values.get({
-                spreadsheetId,
-                range: `${sheetName}!A:N`
-            });
-            existingRows = response.data.values || [];
-        } catch (e) {
-            console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
-        }
+        // Mode REPLACE: tidak perlu baca data lama, langsung tulis ulang
 
         const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
-        const colWidth = headers.length; // 12
+        const colWidth = headers.length; // 14
 
-        // Keep track of INC numbers already present
+        // Mode REPLACE: tulis ulang seluruh data dari hasil scraping terbaru (hapus data lama)
+        const freshData = [];
         const seenIncs = new Set();
-        const existingData = [];
 
-        // Parse existing data rows (skip Title at row 0 and Headers at row 1)
-        if (existingRows.length > 2) {
-            for (let i = 2; i < existingRows.length; i++) {
-                const row = existingRows[i];
-                if (row && row[1]) {
-                    const inc = row[1].trim();
-                    if (inc && inc.match(/^INC\d+$/)) {
-                        seenIncs.add(inc);
-                        existingData.push(row);
-                    }
-                }
-            }
-        }
-
-        // Add only new closed tickets
         newClosedTickets.forEach(wo => {
             const orderId = wo.orderId || wo.order_id || '-';
             if (orderId && orderId.match(/^INC\d+$/) && !seenIncs.has(orderId)) {
@@ -1360,9 +1335,8 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 const summaryVal = wo.summary || wo.description || '-';
                 const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
 
-                // We will re-index NO later
-                existingData.push([
-                    '', // placeholder for index
+                freshData.push([
+                    freshData.length + 1, // index langsung
                     orderId,
                     serviceNo,
                     ttr,
@@ -1381,11 +1355,6 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             }
         });
 
-        // Re-index all rows
-        existingData.forEach((row, idx) => {
-            row[0] = idx + 1;
-        });
-
         // Rebuild values array
         const values = [];
         // Row 0: Title
@@ -1397,7 +1366,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         values.push(headers);
 
         // Data rows
-        existingData.forEach(row => {
+        freshData.forEach(row => {
             values.push(row);
         });
 
@@ -1469,7 +1438,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         });
 
         // Data row formatting
-        if (existingData.length === 0) {
+        if (freshData.length === 0) {
             const noDataRow = ['Tidak ada data'];
             while (noDataRow.length < colWidth) noDataRow.push('');
             values.push(noDataRow);
@@ -1511,7 +1480,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 }
             });
         } else {
-            existingData.forEach((row, idx) => {
+            freshData.forEach((row, idx) => {
                 const isEven = idx % 2 === 0;
                 formattingRequests.push({
                     repeatCell: {
@@ -1595,11 +1564,10 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             });
         }
 
-        console.log(`✅ [GDOCS] Successfully exported closed tickets to ${sheetName} sheet (Total rows: ${existingData.length}, New added: ${newClosedTickets.length})`);
-        return { success: true, totalClosedCount: existingData.length };
+        console.log(`✅ [GDOCS] Successfully exported closed tickets to ${sheetName} sheet (Total: ${freshData.length})`);
+        return { success: true, totalClosedCount: freshData.length };
     } catch (error) {
         console.error('❌ [GDOCS] Failed to export closed proactive sheets:', error.message);
         throw error;
     }
 }
-
