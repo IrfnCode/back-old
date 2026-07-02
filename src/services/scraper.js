@@ -15,6 +15,14 @@ let scrapSheetInterval = null;
 let scrapSheetIntervalMs = 0;
 let scrapSheetStartedAt = null;
 
+async function safeGoto(page, url, timeout = 60000) {
+    try {
+        await page.goto(url, { waitUntil: 'load', timeout });
+    } catch (e) {
+        console.log(`⚠️ [Scraper] safeGoto warning: ${e.message} for ${url}. Proceeding...`);
+    }
+}
+
 /**
  * Get sheet scraping schedule state
  */
@@ -1224,7 +1232,7 @@ export async function scrapeSingleTicket(orderId) {
 
         if (!searchInput) {
             console.log('🔄 Search bar not found, navigating to dashboard...');
-            await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            await safeGoto(page, baseUrl, 60000);
             // Wait for it to be actually visible
             searchInput = await page.waitForSelector('input[placeholder*="Find Incident"]', { visible: true, timeout: 15000 });
         }
@@ -1305,7 +1313,7 @@ export async function scrapeSingleTicket(orderId) {
             if (loginResult.success) {
                 // Retry navigate to ticket
                 const detailUrl = `${baseUrl.replace(/\/allTicketList.*/, '')}/ticketIncidentService/_/allTicketList?_mode=edit&id=${uuid}`;
-                await page.goto(detailUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                await safeGoto(page, detailUrl, 60000);
             }
         }
 
@@ -1355,7 +1363,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
 
         // --- 1. SCRAPE REGULER TICKETS ---
         console.log(`🔍 [Scraper] Navigating to Reguler URL: ${regulerBaseUrl}`);
-        await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await safeGoto(page, regulerBaseUrl, 60000);
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Auto login if guest
@@ -1365,13 +1373,10 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             const { loadCredentials } = await import('./auth.js');
             const credentials = loadCredentials();
             if (credentials) {
-                await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
-                    waitUntil: 'networkidle2',
-                    timeout: 45000
-                });
+                await safeGoto(page, credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", 45000);
                 const loginResult = await performAutoLogin(page);
                 if (loginResult.success) {
-                    await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                    await safeGoto(page, regulerBaseUrl, 60000);
                 }
             }
         }
@@ -1382,7 +1387,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
                 if (await isLoginPage(page)) {
                     await handleTOTPPage(page);
                 }
-                await page.goto(regulerBaseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                await safeGoto(page, regulerBaseUrl, 60000);
             }
         }
 
@@ -1395,7 +1400,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             try {
                 const regulerUrlP2 = regulerBaseUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
                 console.log(`📋 [Scraper] Reguler Page 1 full, navigating to Page 2: ${regulerUrlP2}`);
-                await page.goto(regulerUrlP2, { waitUntil: 'networkidle2', timeout: 45000 });
+                await safeGoto(page, regulerUrlP2, 45000);
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 const htmlReg2 = await page.content();
                 const regulerTicketsP2 = parseWorkOrders(htmlReg2);
@@ -1429,7 +1434,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
                 .replace(/d-6878233-ps=\d+/, 'd-6878233-ps=100');
 
             console.log(`🔍 [Scraper] Navigating to Proactive URL Page ${pageNum}: ${paginatedProactiveUrl}`);
-            await page.goto(paginatedProactiveUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            await safeGoto(page, paginatedProactiveUrl, 60000);
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Check login just in case
@@ -1437,7 +1442,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
                 const loginResult = await performAutoLogin(page);
                 if (loginResult.success) {
                     await new Promise(resolve => setTimeout(resolve, 3000));
-                    await page.goto(paginatedProactiveUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                    await safeGoto(page, paginatedProactiveUrl, 60000);
                 }
             }
 
@@ -1499,7 +1504,7 @@ export async function scrapeClosedTickets(closedUrl) {
         scrapedPage = page;
         isPageShared = isShared;
         console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
-        await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        await safeGoto(page, closedUrl, 60000);
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Check if we hit the login page
@@ -1511,7 +1516,7 @@ export async function scrapeClosedTickets(closedUrl) {
                 if (await isLoginPage(page)) {
                     await handleTOTPPage(page);
                 }
-                await page.goto(closedUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                await safeGoto(page, closedUrl, 60000);
             }
         }
 
