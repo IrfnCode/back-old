@@ -906,3 +906,1199 @@ export async function syncDatekFromExternal() {
         return null;
     }
 }
+
+/**
+ * Extract GAUL value from ticket summary
+ */
+export function extractGaulFromSummary(summary) {
+    if (!summary) return '-';
+    // split by underscore
+    const parts = summary.split('_').map(p => p.trim());
+    for (let i = 0; i < parts.length; i++) {
+        if (parts[i].toLowerCase() === 'gaul' || parts[i].toLowerCase().startsWith('gaul')) {
+            if (i + 1 < parts.length) {
+                return parts[i + 1];
+            }
+        }
+    }
+    // Fallback: regex search
+    const match = summary.match(/gaul\s*[:_]\s*([^\s_]+)/i) || summary.match(/gaul\s+([^\s_]+)/i);
+    if (match) {
+        return match[1];
+    }
+    return '-';
+}
+
+/**
+ * Export Reguler, SQM, and UNSPEC tickets to the specified Google Sheet
+ */
+export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, regulerTickets, sqmTickets, unspecTickets) {
+    try {
+        const auth = getAuthClient();
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Ensure the sheet exists
+        await ensureSheetExists(sheets, spreadsheetId, sheetName);
+
+        const values = [];
+        const formattingRequests = [];
+
+        // Reset any existing merged cells to prevent overlap errors
+        formattingRequests.push({
+            unmergeCells: {
+                range: {
+                    startRowIndex: 0,
+                    endRowIndex: 1000,
+                    startColumnIndex: 0,
+                    endColumnIndex: 40
+                }
+            }
+        });
+
+        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
+        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SOURCE TICKET'];
+        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
+        
+        const regColWidth = regHeaders.length; // 11
+        const sqmColWidth = sqmHeaders.length; // 8
+        const unspecColWidth = unspecHeaders.length; // 9
+        const spacing = 1; // 1 empty column separator
+
+        // Column indexes
+        const regColStart = 0;                     // Columns A-I (0 to 8)
+        const sqmColStart = regColStart + regColWidth + spacing; // Columns K-Q (10 to 16)
+        const unspecColStart = sqmColStart + sqmColWidth + spacing; // Columns S-Y (18 to 24)
+
+        // Helper to fill cell or pad a row array to at least certain length
+        const setRowCells = (rowArr, startIdx, dataArr) => {
+            while (rowArr.length < startIdx) {
+                rowArr.push('');
+            }
+            for (let i = 0; i < dataArr.length; i++) {
+                rowArr[startIdx + i] = dataArr[i];
+            }
+        };
+
+        // --- ROW 0: TITLE ROW ---
+        const row0 = [];
+        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===', '', '', '', '', '', '', '', '']);
+        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '']);
+        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '']);
+        values.push(row0);
+
+        // Add formatting requests for Title row: Merge and Style
+        const addTitleFormat = (colStart, colWidth, bgColor, textColor) => {
+            formattingRequests.push({
+                mergeCells: {
+                    range: {
+                        startRowIndex: 0,
+                        endRowIndex: 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: 0,
+                        endRowIndex: 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: bgColor,
+                            textFormat: { bold: true, fontSize: 11, foregroundColor: textColor },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+        };
+        
+        // Soft backgrounds + matching text colors
+        addTitleFormat(regColStart, regColWidth, { red: 0.92, green: 0.96, blue: 0.98 }, { red: 0.11, green: 0.21, blue: 0.34 });
+        addTitleFormat(sqmColStart, sqmColWidth, { red: 0.91, green: 0.97, blue: 0.96 }, { red: 0.05, green: 0.35, blue: 0.29 });
+        addTitleFormat(unspecColStart, unspecColWidth, { red: 0.99, green: 0.95, blue: 0.91 }, { red: 0.55, green: 0.22, blue: 0.0 });
+
+        // --- ROW 1: HEADERS ROW ---
+        const row1 = [];
+        setRowCells(row1, regColStart, regHeaders);
+        setRowCells(row1, sqmColStart, sqmHeaders);
+        setRowCells(row1, unspecColStart, unspecHeaders);
+        values.push(row1);
+
+        const addHeaderFormat = (colStart, colWidth, headerColor) => {
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: 1,
+                        endRowIndex: 2,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: headerColor,
+                            textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 10 },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+        };
+        addHeaderFormat(regColStart, regColWidth, { red: 0.17, green: 0.24, blue: 0.31 }); // Professional Slate Gray (#2C3E50)
+        addHeaderFormat(sqmColStart, sqmColWidth, { red: 0.09, green: 0.63, blue: 0.52 }); // Forest Teal (#16A085)
+        addHeaderFormat(unspecColStart, unspecColWidth, { red: 0.83, green: 0.33, blue: 0.0 }); // Warm Bronze/Amber (#D35400)
+
+        // --- DATA ROWS ---
+        const formatRows = (tickets, type) => {
+            return tickets.map((wo, index) => {
+                const orderId = wo.orderId || wo.order_id || '-';
+                const serviceNo = wo.serviceNo || wo.service_no || '-';
+                const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
+                const summaryVal = wo.summary || wo.description || '-';
+                const custType = wo.customerType || wo.customer_type || 'REGULER';
+                const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
+                const lapul = wo.lapul !== undefined ? wo.lapul : '-';
+                const wz = wo.workzone || '-';
+                const bookingDate = wo.bookingDate || wo.booking_date || '-';
+                const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
+
+                if (type === 'reguler') {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        ttr,
+                        custType,
+                        gaul,
+                        lapul,
+                        wz,
+                        bookingDate,
+                        summaryVal,
+                        srcTicket
+                    ];
+                } else if (type === 'sqm') {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        summaryVal,
+                        custType,
+                        wz,
+                        bookingDate,
+                        srcTicket
+                    ];
+                } else {
+                    return [
+                        index + 1,
+                        orderId,
+                        serviceNo,
+                        ttr,
+                        custType,
+                        wz,
+                        bookingDate,
+                        summaryVal,
+                        srcTicket
+                    ];
+                }
+            });
+        };
+
+        const regData = formatRows(regulerTickets, 'reguler');
+        const sqmData = formatRows(sqmTickets, 'sqm');
+        const unspecData = formatRows(unspecTickets, 'unspec');
+
+        // Determine data rows range
+        const regRowMax = regData.length > 0 ? regData.length : 1;
+        const sqmRowMax = sqmData.length > 0 ? sqmData.length : 1;
+        const unspecRowMax = unspecData.length > 0 ? unspecData.length : 1;
+        const totalDataRows = Math.max(regRowMax, sqmRowMax, unspecRowMax);
+
+        // Helper to format a table cell grid (border + soft zebra)
+        const addCellFormat = (rowIdx, colStart, colWidth, isEven) => {
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: isEven ? { red: 0.98, green: 0.98, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                            textFormat: { fontSize: 10 },
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                }
+            });
+        };
+
+        // Helper for styling "Tidak ada data" rows cleanly
+        const addNoDataFormat = (rowIdx, colStart, colWidth) => {
+            formattingRequests.push({
+                mergeCells: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: rowIdx,
+                        endRowIndex: rowIdx + 1,
+                        startColumnIndex: colStart,
+                        endColumnIndex: colStart + colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: { red: 0.98, green: 0.98, blue: 0.98 },
+                            textFormat: { italic: true, fontSize: 10, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.borders'
+                }
+            });
+        };
+
+        for (let r = 0; r < totalDataRows; r++) {
+            const dataRow = [];
+            const isEven = r % 2 === 0;
+
+            // 1. Reguler Column fill
+            if (regData.length === 0 && r === 0) {
+                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, regColStart, regColWidth);
+            } else if (r < regData.length) {
+                setRowCells(dataRow, regColStart, regData[r]);
+                addCellFormat(2 + r, regColStart, regColWidth, isEven);
+            }
+
+            // 2. SQM Column fill
+            if (sqmData.length === 0 && r === 0) {
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, sqmColStart, sqmColWidth);
+            } else if (r < sqmData.length) {
+                setRowCells(dataRow, sqmColStart, sqmData[r]);
+                addCellFormat(2 + r, sqmColStart, sqmColWidth, isEven);
+            }
+
+            // 3. UNSPEC Column fill
+            if (unspecData.length === 0 && r === 0) {
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
+                addNoDataFormat(2, unspecColStart, unspecColWidth);
+            } else if (r < unspecData.length) {
+                setRowCells(dataRow, unspecColStart, unspecData[r]);
+                addCellFormat(2 + r, unspecColStart, unspecColWidth, isEven);
+            }
+
+            values.push(dataRow);
+        }
+
+        // --- COLUMNS DIMENSION CONFIGURATION ---
+        const colWidths = [
+            45,  125, 115, 115, 115, 145, 75,  95, 135, 280, 115, // Reguler (0-10): +SUMMARY, +SOURCE TICKET
+            30,                                                    // Spacing separator (11)
+            45,  125, 115, 280, 115, 95,  135, 115,               // SQM (12-19): +SOURCE TICKET
+            30,                                                    // Spacing separator (20)
+            45,  125, 115, 115, 115, 95,  135, 280, 115           // UNSPEC (21-29): +SUMMARY, +SOURCE TICKET
+        ];
+
+        colWidths.forEach((width, idx) => {
+            formattingRequests.push({
+                updateDimensionProperties: {
+                    range: {
+                        dimension: 'COLUMNS',
+                        startIndex: idx,
+                        endIndex: idx + 1
+                    },
+                    properties: {
+                        pixelSize: width
+                    },
+                    fields: 'pixelSize'
+                }
+            });
+        });
+
+        // Clear all columns from A to Z first
+        try {
+            await sheets.spreadsheets.values.clear({
+                spreadsheetId,
+                range: `${sheetName}!A:AZ`
+            });
+        } catch (e) {
+            console.log(`Note: Could not clear sheet ${sheetName}`);
+        }
+
+        // Write all values
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'RAW',
+            requestBody: { values }
+        });
+
+        // Apply visual formatting using batchUpdate
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetObj = meta.data.sheets.find(s => s.properties.title === sheetName);
+        if (sheetObj) {
+            const sheetId = sheetObj.properties.sheetId;
+            formattingRequests.forEach(req => {
+                if (req.repeatCell && req.repeatCell.range) {
+                    req.repeatCell.range.sheetId = sheetId;
+                }
+                if (req.mergeCells && req.mergeCells.range) {
+                    req.mergeCells.range.sheetId = sheetId;
+                }
+                if (req.unmergeCells && req.unmergeCells.range) {
+                    req.unmergeCells.range.sheetId = sheetId;
+                }
+                if (req.updateDimensionProperties && req.updateDimensionProperties.range) {
+                    req.updateDimensionProperties.range.sheetId = sheetId;
+                }
+            });
+
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                requestBody: {
+                    requests: formattingRequests
+                }
+            });
+        }
+
+        console.log(`✅ [GDOCS] Successfully exported to ${sheetName} sheet horizontally (Reguler: ${regulerTickets.length}, SQM: ${sqmTickets.length}, Unspec: ${unspecTickets.length})`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [GDOCS] Failed to export proactive sheets:', error.message);
+        throw error;
+    }
+}
+
+export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClosedTickets) {
+    try {
+        const auth = getAuthClient();
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Ensure the sheet exists
+        await ensureSheetExists(sheets, spreadsheetId, sheetName);
+
+        // Read existing values to append to them
+        let existingRows = [];
+        try {
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId,
+                range: `${sheetName}!A:O`
+            });
+            existingRows = response.data.values || [];
+        } catch (e) {
+            console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
+        }
+
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
+        const colWidth = headers.length; // 15
+
+        // Keep track of INC numbers already present in the sheet
+        const seenIncs = new Set();
+        const existingData = [];
+
+        const isShifted = (rowArr) => {
+            if (!rowArr || rowArr.length < 11) return false;
+            const val = (rowArr[10] || '').trim();
+            if (!val || val === '-') return false;
+            const hasYear = /\b\d{4}\b/.test(val);
+            const hasDateSlash = /\d{2}\/\d{2}/.test(val);
+            const hasDateDash = /\d{2}-\d{2}/.test(val);
+            const isDate = hasYear || hasDateSlash || hasDateDash;
+            const hasLetters = /[a-zA-Z]/.test(val);
+            return hasLetters && !isDate;
+        };
+
+        // Parse existing data rows (skip Title at row 0 and Headers at row 1)
+        if (existingRows.length > 2) {
+            for (let i = 2; i < existingRows.length; i++) {
+                const row = existingRows[i];
+                if (row && row[1]) {
+                    const inc = row[1].trim();
+                    if (inc && inc.match(/^INC\d+$/)) {
+                        seenIncs.add(inc);
+                        
+                        let formattedRow = [...row];
+                        if (formattedRow.length <= 14 || isShifted(formattedRow)) {
+                            if (formattedRow.length >= 15) {
+                                // If already 15 columns but shifted, slice up to index 9, insert '-', then append the rest
+                                const firstPart = formattedRow.slice(0, 10);
+                                const restPart = formattedRow.slice(10);
+                                formattedRow = [...firstPart, '-', ...restPart];
+                            } else {
+                                // Just insert '-' at index 10
+                                formattedRow.splice(10, 0, '-');
+                            }
+                        }
+                        
+                        // Ensure exactly 15 columns
+                        while (formattedRow.length < 15) {
+                            formattedRow.push('-');
+                        }
+                        formattedRow = formattedRow.slice(0, 15);
+                        
+                        existingData.push(formattedRow);
+                    }
+                }
+            }
+        }
+
+        // Append only new closed tickets
+        newClosedTickets.forEach(wo => {
+            const orderId = wo.orderId || wo.order_id || '-';
+            if (orderId && orderId.match(/^INC\d+$/) && !seenIncs.has(orderId)) {
+                const serviceNo = wo.serviceNo || wo.service_no || '-';
+                const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
+                const custType = wo.customerType || wo.customer_type || 'REGULER';
+                const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
+                const lapul = wo.lapul !== undefined ? wo.lapul : '-';
+                const wz = wo.workzone || '-';
+                const bookingDate = wo.bookingDate || wo.booking_date || '-';
+                const reportedDate = wo.reportedDate || '-';
+                const resolveDate = wo.resolveDate || '-';
+                const actualSolution = wo.actualSolution || '-';
+                const technician = wo.technician || '-';
+                const summaryVal = wo.summary || wo.description || '-';
+                const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
+
+                existingData.push([
+                    '', // placeholder for index
+                    orderId,
+                    serviceNo,
+                    ttr,
+                    custType,
+                    gaul,
+                    lapul,
+                    wz,
+                    bookingDate,
+                    reportedDate,
+                    resolveDate,
+                    actualSolution,
+                    technician,
+                    summaryVal,
+                    srcTicket
+                ]);
+                seenIncs.add(orderId);
+            }
+        });
+
+        // Re-index all rows (NO column)
+        existingData.forEach((row, idx) => {
+            row[0] = idx + 1;
+        });
+
+        // Rebuild values array
+        const values = [];
+        // Row 0: Title
+        const titleRow = ['=== TIKET CLOSE ==='];
+        while (titleRow.length < colWidth) titleRow.push('');
+        values.push(titleRow);
+
+        // Row 1: Headers
+        values.push(headers);
+
+        // Data rows
+        existingData.forEach(row => {
+            values.push(row);
+        });
+
+        const formattingRequests = [];
+
+        // Clear existing merges first to avoid merge conflicts
+        formattingRequests.push({
+            unmergeCells: {
+                range: {
+                    startRowIndex: 0,
+                    endRowIndex: 2000,
+                    startColumnIndex: 0,
+                    endColumnIndex: 40
+                }
+            }
+        });
+
+        // Title row formatting (Merge A1:L1 and style)
+        formattingRequests.push({
+            mergeCells: {
+                range: {
+                    startRowIndex: 0,
+                    endRowIndex: 1,
+                    startColumnIndex: 0,
+                    endColumnIndex: colWidth
+                },
+                mergeType: 'MERGE_ALL'
+            }
+        });
+        formattingRequests.push({
+            repeatCell: {
+                range: {
+                    startRowIndex: 0,
+                    endRowIndex: 1,
+                    startColumnIndex: 0,
+                    endColumnIndex: colWidth
+                },
+                cell: {
+                    userEnteredFormat: {
+                        backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 },
+                        textFormat: { bold: true, fontSize: 11, foregroundColor: { red: 0.2, green: 0.2, blue: 0.2 } },
+                        horizontalAlignment: 'CENTER',
+                        verticalAlignment: 'MIDDLE'
+                    }
+                },
+                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+            }
+        });
+
+        // Header row formatting (dark charcoal header)
+        formattingRequests.push({
+            repeatCell: {
+                range: {
+                    startRowIndex: 1,
+                    endRowIndex: 2,
+                    startColumnIndex: 0,
+                    endColumnIndex: colWidth
+                },
+                cell: {
+                    userEnteredFormat: {
+                        backgroundColor: { red: 0.2, green: 0.2, blue: 0.2 },
+                        textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 10 },
+                        horizontalAlignment: 'CENTER',
+                        verticalAlignment: 'MIDDLE'
+                    }
+                },
+                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+            }
+        });
+
+        // Data row formatting
+        if (existingData.length === 0) {
+            const noDataRow = ['Tidak ada data'];
+            while (noDataRow.length < colWidth) noDataRow.push('');
+            values.push(noDataRow);
+
+            formattingRequests.push({
+                mergeCells: {
+                    range: {
+                        startRowIndex: 2,
+                        endRowIndex: 3,
+                        startColumnIndex: 0,
+                        endColumnIndex: colWidth
+                    },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+            formattingRequests.push({
+                repeatCell: {
+                    range: {
+                        startRowIndex: 2,
+                        endRowIndex: 3,
+                        startColumnIndex: 0,
+                        endColumnIndex: colWidth
+                    },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: { red: 0.98, green: 0.98, blue: 0.98 },
+                            textFormat: { italic: true, fontSize: 10, foregroundColor: { red: 0.5, green: 0.5, blue: 0.5 } },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE',
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment,userEnteredFormat.borders'
+                }
+            });
+        } else {
+            existingData.forEach((row, idx) => {
+                const isEven = idx % 2 === 0;
+                formattingRequests.push({
+                    repeatCell: {
+                        range: {
+                            startRowIndex: 2 + idx,
+                            endRowIndex: 2 + idx + 1,
+                            startColumnIndex: 0,
+                            endColumnIndex: colWidth
+                        },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: isEven ? { red: 0.98, green: 0.98, blue: 0.98 } : { red: 1.0, green: 1.0, blue: 1.0 },
+                                textFormat: { fontSize: 10 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                                }
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            });
+        }
+
+        // Set column widths
+        const colWidths = [
+            45,  125, 115, 115, 115, 145, 75,  95, 135, // A-I (NO ~ BOOKING DATE)
+            135, 135, 250, 150, 280, 115                // J (Reported Date), K (Resolve Date), L (Actual Solution), M (Technician), N (Summary), O (Source Ticket)
+        ];
+
+        colWidths.forEach((width, idx) => {
+            formattingRequests.push({
+                updateDimensionProperties: {
+                    range: {
+                        dimension: 'COLUMNS',
+                        startIndex: idx,
+                        endIndex: idx + 1
+                    },
+                    properties: {
+                        pixelSize: width
+                    },
+                    fields: 'pixelSize'
+                }
+            });
+        });
+
+        // Clear range A:O
+        try {
+            await sheets.spreadsheets.values.clear({
+                spreadsheetId,
+                range: `${sheetName}!A:O`
+            });
+        } catch (e) {}
+
+        // Write all values
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'RAW',
+            requestBody: { values }
+        });
+
+        // Apply formatting
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetObj = meta.data.sheets.find(s => s.properties.title === sheetName);
+        if (sheetObj) {
+            const sheetId = sheetObj.properties.sheetId;
+            formattingRequests.forEach(req => {
+                if (req.repeatCell && req.repeatCell.range) req.repeatCell.range.sheetId = sheetId;
+                if (req.mergeCells && req.mergeCells.range) req.mergeCells.range.sheetId = sheetId;
+                if (req.unmergeCells && req.unmergeCells.range) req.unmergeCells.range.sheetId = sheetId;
+                if (req.updateDimensionProperties && req.updateDimensionProperties.range) req.updateDimensionProperties.range.sheetId = sheetId;
+            });
+
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId,
+                requestBody: { requests: formattingRequests }
+            });
+        }
+
+        console.log(`✅ [GDOCS] Successfully exported closed tickets to ${sheetName} sheet (Total: ${existingData.length})`);
+        return { success: true, totalClosedCount: existingData.length };
+    } catch (error) {
+        console.error('❌ [GDOCS] Failed to export closed proactive sheets:', error.message);
+        throw error;
+    }
+}
+
+export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
+    try {
+        const auth = getAuthClient();
+        const sheets = google.sheets({ version: 'v4', auth });
+
+        // Ensure the sheet exists
+        await ensureSheetExists(sheets, spreadsheetId, sheetName);
+
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetObj = meta.data.sheets.find(s => s.properties.title === sheetName);
+        if (!sheetObj) throw new Error(`Could not find or create sheet ${sheetName}`);
+        const sheetId = sheetObj.properties.sheetId;
+
+        const formattingRequests = [];
+
+        // 1. Delete existing charts and unmerge all cells to start fresh
+        if (sheetObj.charts) {
+            sheetObj.charts.forEach(chart => {
+                formattingRequests.push({
+                    deleteEmbeddedObject: {
+                        objectId: chart.chartId
+                    }
+                });
+            });
+        }
+
+        formattingRequests.push({
+            unmergeCells: {
+                range: {
+                    sheetId,
+                    startRowIndex: 0,
+                    endRowIndex: 100,
+                    startColumnIndex: 0,
+                    endColumnIndex: 20
+                }
+            }
+        });
+
+        // Write values
+        const values = [];
+
+        // Row 0 (index 0): Title Row
+        const titleRow = ['📊 DASHBOARD MONITORING TIKET'];
+        while (titleRow.length < 10) titleRow.push('');
+        values.push(titleRow);
+
+        // Row 1 (index 1): Spacer
+        values.push([]);
+
+        // Row 2 (index 2): KPI headers
+        values.push([
+            'TOTAL OPEN TICKETS', '',
+            'OPEN REGULER', '',
+            'OPEN SQM', '',
+            'OPEN UNSPEC', '',
+            'TOTAL CLOSED', ''
+        ]);
+
+        // Row 3 (index 3): KPI values (formulas using semicolon separator)
+        values.push([
+            `=COUNTIF('TIKET OPEN'!B3:B; "INC*") + COUNTIF('TIKET OPEN'!N3:N; "INC*") + COUNTIF('TIKET OPEN'!W3:W; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!B3:B; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!N3:N; "INC*")`, '',
+            `=COUNTIF('TIKET OPEN'!W3:W; "INC*")`, '',
+            `=COUNTIF('TIKET CLOSE'!B3:B; "INC*")`, ''
+        ]);
+
+        // Row 4 (index 4): Spacer
+        values.push([]);
+        // Row 5 (index 5): Spacer
+        values.push([]);
+
+        // Row 6 (index 6): Workzone Table Title
+        values.push(['📋 RINGKASAN TIKET PER WORKZONE', '', '', '', '']);
+
+        // Row 7 (index 7): Workzone Table Headers
+        values.push(['WORKZONE', 'OPEN REGULER', 'OPEN SQM', 'OPEN UNSPEC', 'TIKET CLOSE']);
+
+        // Row 8-15 (index 8-15): Workzone Data
+        const workzones = ['KIJ', 'KMS', 'TPI', 'TUB', 'RAI', 'TER', 'DBS', 'PYT'];
+        workzones.forEach((wz, idx) => {
+            const rowIdx = 9 + idx; // 1-based row index in Google Sheet
+            values.push([
+                wz,
+                `=COUNTIF('TIKET OPEN'!H$3:H; A${rowIdx})`,
+                `=COUNTIF('TIKET OPEN'!R$3:R; A${rowIdx})`,
+                `=COUNTIF('TIKET OPEN'!AA$3:AA; A${rowIdx})`,
+                `=COUNTIF('TIKET CLOSE'!H$3:H; A${rowIdx})`
+            ]);
+        });
+
+        // Row 16 (index 16): Grand Total
+        values.push(['Grand Total', '=SUM(B9:B16)', '=SUM(C9:C16)', '=SUM(D9:D16)', '=SUM(E9:E16)']);
+
+        // Write all values
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'USER_ENTERED', // Use USER_ENTERED so formulas parse correctly
+            requestBody: { values }
+        });
+
+        // 2. Formatting requests
+        // Title formatting
+        formattingRequests.push({
+            mergeCells: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 10 },
+                mergeType: 'MERGE_ALL'
+            }
+        });
+        formattingRequests.push({
+            repeatCell: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 10 },
+                cell: {
+                    userEnteredFormat: {
+                        backgroundColor: { red: 0.11, green: 0.18, blue: 0.22 }, // Dark Charcoal/Blue #1C2D37
+                        textFormat: { bold: true, fontSize: 13, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 } },
+                        horizontalAlignment: 'CENTER',
+                        verticalAlignment: 'MIDDLE'
+                    }
+                },
+                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+            }
+        });
+
+        // KPI formatting
+        const kpiColors = [
+            { red: 0.92, green: 0.96, blue: 0.98 }, // Soft Blue
+            { red: 0.95, green: 0.98, blue: 0.96 }, // Soft Teal
+            { red: 0.99, green: 0.98, blue: 0.92 }, // Soft Yellow
+            { red: 0.99, green: 0.95, blue: 0.95 }, // Soft Orange
+            { red: 0.96, green: 0.96, blue: 0.96 }  // Soft Gray
+        ];
+
+        for (let i = 0; i < 5; i++) {
+            const colStart = i * 2;
+            const colEnd = colStart + 2;
+            const color = kpiColors[i];
+
+            // Merge KPI Header
+            formattingRequests.push({
+                mergeCells: {
+                    range: { sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: colStart, endColumnIndex: colEnd },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+            // Merge KPI Value
+            formattingRequests.push({
+                mergeCells: {
+                    range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: colStart, endColumnIndex: colEnd },
+                    mergeType: 'MERGE_ALL'
+                }
+            });
+
+            // Format KPI cells
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: 2, endRowIndex: 4, startColumnIndex: colStart, endColumnIndex: colEnd },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: color,
+                            borders: {
+                                top: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                                bottom: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                                left: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+                                right: { style: 'SOLID', width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } }
+                            }
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.borders'
+                }
+            });
+
+            // Format Header text
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: 2, endRowIndex: 3, startColumnIndex: colStart, endColumnIndex: colEnd },
+                    cell: {
+                        userEnteredFormat: {
+                            textFormat: { bold: true, fontSize: 9, foregroundColor: { red: 0.3, green: 0.3, blue: 0.3 } },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+
+            // Format Value text
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: 3, endRowIndex: 4, startColumnIndex: colStart, endColumnIndex: colEnd },
+                    cell: {
+                        userEnteredFormat: {
+                            textFormat: { bold: true, fontSize: 18, foregroundColor: { red: 0.1, green: 0.1, blue: 0.1 } },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+        }
+
+        // Workzone Table Title formatting
+        formattingRequests.push({
+            mergeCells: {
+                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 5 },
+                mergeType: 'MERGE_ALL'
+            }
+        });
+        formattingRequests.push({
+            repeatCell: {
+                range: { sheetId, startRowIndex: 6, endRowIndex: 7, startColumnIndex: 0, endColumnIndex: 5 },
+                cell: {
+                    userEnteredFormat: {
+                        backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 },
+                        textFormat: { bold: true, fontSize: 10, foregroundColor: { red: 0.2, green: 0.2, blue: 0.2 } },
+                        horizontalAlignment: 'CENTER',
+                        verticalAlignment: 'MIDDLE'
+                    }
+                },
+                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+            }
+        });
+
+        // Table Headers formatting (Color-coded per ticket type)
+        const headerColors = [
+            { red: 0.2, green: 0.2, blue: 0.2 },      // Column A: WORKZONE (Dark Charcoal)
+            { red: 0.17, green: 0.24, blue: 0.31 },   // Column B: OPEN REGULER (Slate Blue)
+            { red: 0.09, green: 0.63, blue: 0.52 },   // Column C: OPEN SQM (Forest Teal)
+            { red: 0.83, green: 0.33, blue: 0.0 },    // Column D: OPEN UNSPEC (Warm Amber)
+            { red: 0.4, green: 0.4, blue: 0.4 }       // Column E: TIKET CLOSE (Gray)
+        ];
+
+        headerColors.forEach((color, colIdx) => {
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: 7, endRowIndex: 8, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
+                    cell: {
+                        userEnteredFormat: {
+                            backgroundColor: color,
+                            textFormat: { bold: true, foregroundColor: { red: 1.0, green: 1.0, blue: 1.0 }, fontSize: 9 },
+                            horizontalAlignment: 'CENTER',
+                            verticalAlignment: 'MIDDLE'
+                        }
+                    },
+                    fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment'
+                }
+            });
+        });
+
+        // Soft backgrounds for columns (Zebra striped with respective colors)
+        const columnBgEven = [
+            { red: 0.98, green: 0.98, blue: 0.98 },   // Col A: WORKZONE (Light Gray)
+            { red: 0.94, green: 0.96, blue: 0.98 },   // Col B: OPEN REGULER (Soft Slate Blue)
+            { red: 0.93, green: 0.97, blue: 0.96 },   // Col C: OPEN SQM (Soft Teal)
+            { red: 0.99, green: 0.95, blue: 0.92 },   // Col D: OPEN UNSPEC (Soft Warm Orange)
+            { red: 0.96, green: 0.96, blue: 0.96 }    // Col E: TIKET CLOSE (Soft Gray)
+        ];
+        const columnBgOdd = [
+            { red: 1.0, green: 1.0, blue: 1.0 },      // Col A
+            { red: 0.97, green: 0.98, blue: 0.99 },   // Col B
+            { red: 0.96, green: 0.99, blue: 0.98 },   // Col C
+            { red: 1.0, green: 0.97, blue: 0.95 },    // Col D
+            { red: 0.98, green: 0.98, blue: 0.98 }    // Col E
+        ];
+
+        // Table Rows formatting
+        for (let i = 0; i < workzones.length; i++) {
+            const rowIdx = 8 + i;
+            const isEven = i % 2 === 0;
+
+            for (let colIdx = 0; colIdx < 5; colIdx++) {
+                const bgColor = isEven ? columnBgEven[colIdx] : columnBgOdd[colIdx];
+                formattingRequests.push({
+                    repeatCell: {
+                        range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: colIdx, endColumnIndex: colIdx + 1 },
+                        cell: {
+                            userEnteredFormat: {
+                                backgroundColor: bgColor,
+                                textFormat: { fontSize: 9 },
+                                borders: {
+                                    top: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    bottom: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    left: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } },
+                                    right: { style: 'SOLID', width: 1, color: { red: 0.88, green: 0.88, blue: 0.88 } }
+                                }
+                            }
+                        },
+                        fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+                    }
+                });
+            }
+
+            // Align columns B-E to center
+            formattingRequests.push({
+                repeatCell: {
+                    range: { sheetId, startRowIndex: rowIdx, endRowIndex: rowIdx + 1, startColumnIndex: 1, endColumnIndex: 5 },
+                    cell: {
+                        userEnteredFormat: {
+                            horizontalAlignment: 'CENTER'
+                        }
+                    },
+                    fields: 'userEnteredFormat.horizontalAlignment'
+                }
+            });
+        }
+
+        // Grand Total formatting
+        formattingRequests.push({
+            repeatCell: {
+                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 0, endColumnIndex: 5 },
+                cell: {
+                    userEnteredFormat: {
+                        backgroundColor: { red: 0.9, green: 0.9, blue: 0.9 },
+                        textFormat: { bold: true, fontSize: 9 },
+                        borders: {
+                            top: { style: 'DOUBLE', width: 1, color: { red: 0.4, green: 0.4, blue: 0.4 } },
+                            bottom: { style: 'DOUBLE', width: 1, color: { red: 0.4, green: 0.4, blue: 0.4 } }
+                        }
+                    }
+                },
+                fields: 'userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.borders'
+            }
+        });
+        formattingRequests.push({
+            repeatCell: {
+                range: { sheetId, startRowIndex: 16, endRowIndex: 17, startColumnIndex: 1, endColumnIndex: 5 },
+                cell: {
+                    userEnteredFormat: {
+                        horizontalAlignment: 'CENTER'
+                    }
+                },
+                fields: 'userEnteredFormat.horizontalAlignment'
+            }
+        });
+
+        // Set column widths
+        const colWidths = [120, 110, 110, 110, 110, 30, 120, 120, 120, 120];
+        colWidths.forEach((width, idx) => {
+            formattingRequests.push({
+                updateDimensionProperties: {
+                    range: { sheetId, dimension: 'COLUMNS', startIndex: idx, endIndex: idx + 1 },
+                    properties: { pixelSize: width },
+                    fields: 'pixelSize'
+                }
+            });
+        });
+
+        // 3. Add Google Column Chart (Tiket Open vs Tiket Close per Workzone)
+        formattingRequests.push({
+            addChart: {
+                chart: {
+                    spec: {
+                        title: 'DISTRIBUSI TIKET PER WORKZONE',
+                        basicChart: {
+                            chartType: 'COLUMN',
+                            legendPosition: 'BOTTOM_LEGEND',
+                            axis: [
+                                { position: 'BOTTOM_AXIS', title: 'Workzone' },
+                                { position: 'LEFT_AXIS', title: 'Jumlah Tiket' }
+                            ],
+                            domains: [
+                                {
+                                    domain: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'WORKZONE'
+                                                endRowIndex: 16,  // Row for PYT (exclude Grand Total)
+                                                startColumnIndex: 0,
+                                                endColumnIndex: 1
+                                            }]
+                                        }
+                                    }
+                                }
+                            ],
+                            series: [
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'OPEN REGULER'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 1,
+                                                endColumnIndex: 2
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                },
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'OPEN SQM'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 2,
+                                                endColumnIndex: 3
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                },
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'OPEN UNSPEC'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 3,
+                                                endColumnIndex: 4
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                },
+                                {
+                                    series: {
+                                        sourceRange: {
+                                            sources: [{
+                                                sheetId,
+                                                startRowIndex: 7,  // Header 'TIKET CLOSE'
+                                                endRowIndex: 16,
+                                                startColumnIndex: 4,
+                                                endColumnIndex: 5
+                                            }]
+                                        }
+                                    },
+                                    targetAxis: 'LEFT_AXIS'
+                                }
+                            ]
+                        }
+                    },
+                    position: {
+                        overlayPosition: {
+                            anchorCell: {
+                                sheetId,
+                                rowIndex: 6,
+                                columnIndex: 6 // Column G (to avoid overlapping wider table)
+                            },
+                            offsetXPixels: 10,
+                            offsetYPixels: 5
+                        }
+                    }
+                }
+            }
+        });
+
+        // Run batchUpdate
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: { requests: formattingRequests }
+        });
+
+        console.log(`📊 [GDOCS] Dashboard exported successfully!`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [GDOCS] Failed to export Dashboard sheet:', error.message);
+        throw error;
+    }
+}

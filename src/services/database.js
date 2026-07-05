@@ -379,6 +379,10 @@ export function getWorkOrderByOrderId(orderId) {
   return db.prepare('SELECT * FROM work_orders WHERE order_id = ?').get(orderId);
 }
 
+export function getWorkOrdersByServiceNo(serviceNo) {
+  return db.prepare('SELECT * FROM work_orders WHERE service_no = ? OR service_no LIKE ?').all(serviceNo, `%${serviceNo}%`);
+}
+
 export function updateWorkOrderStatus(orderId, status) {
   const stmt = db.prepare(`
     UPDATE work_orders 

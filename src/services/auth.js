@@ -53,6 +53,16 @@ export async function isLoginPage(page) {
   }
 }
 
+export async function isLoggedIn(page) {
+  try {
+    const content = await page.content().catch(() => "");
+    return content.toLowerCase().includes("logout");
+  } catch (error) {
+    console.error("❌ Failed to check if logged in:", error.message);
+    return false;
+  }
+}
+
 export async function handleTOTPPage(page) {
   const credentials = loadCredentials();
   if (!credentials) return { success: false, message: "Credentials not found" };

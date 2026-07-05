@@ -2,7 +2,7 @@ import fs from 'fs';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import { getBrowserInstance, getPageInstance, getUserDataDir } from './browser.js';
-import { isLoginPage, performAutoLogin, handleTOTPPage } from './auth.js';
+import { isLoginPage, performAutoLogin, handleTOTPPage, isLoggedIn } from './auth.js';
 import { getConfig, saveConfig, getWorkOrderById, updateWorkOrderCoordinates } from './database.js';
 import { formatToWIB, getWIBDate } from '../utils/time.js';
 
@@ -11,6 +11,65 @@ let isScrapingActive = false;
 let isScrapingNow = false;
 let ownBrowser = null;
 let ownPage = null;
+let scrapSheetInterval = null;
+let scrapSheetIntervalMs = 0;
+let scrapSheetStartedAt = null;
+
+async function safeGoto(page, url, timeout = 60000) {
+    try {
+        await page.goto(url, { waitUntil: 'load', timeout });
+    } catch (e) {
+        console.log(`⚠️ [Scraper] safeGoto warning: ${e.message} for ${url}. Proceeding...`);
+    }
+}
+
+/**
+ * Get sheet scraping schedule state
+ */
+export function getScrapSheetStatus() {
+    return {
+        running: scrapSheetInterval !== null,
+        intervalMs: scrapSheetIntervalMs,
+        startedAt: scrapSheetStartedAt
+    };
+}
+
+/**
+ * Stop the automatic sheet scraping schedule
+ */
+export function stopScrapSheet() {
+    if (scrapSheetInterval) {
+        clearInterval(scrapSheetInterval);
+        scrapSheetInterval = null;
+        scrapSheetIntervalMs = 0;
+        scrapSheetStartedAt = null;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Start the automatic sheet scraping schedule
+ * @param {Function} runFn - async function that does the actual scrape+export
+ * @param {number} intervalMs - interval in milliseconds
+ */
+export function startScrapSheet(runFn, intervalMs) {
+    // Stop any existing schedule first
+    stopScrapSheet();
+
+    scrapSheetIntervalMs = intervalMs;
+    scrapSheetStartedAt = new Date();
+
+    // Run immediately on start, then on interval
+    runFn().catch(err => console.error('❌ [ScrapSheet] Initial run error:', err.message));
+
+    scrapSheetInterval = setInterval(() => {
+        runFn().catch(err => console.error('❌ [ScrapSheet] Interval run error:', err.message));
+    }, intervalMs);
+
+    console.log(`⏰ [ScrapSheet] Auto-schedule started every ${intervalMs / 60000} minutes`);
+    return true;
+}
 
 // HVC Tier expiry hours configuration
 // HVC Tier expiry hours configuration
@@ -103,7 +162,7 @@ function parseTicketRow(rowText) {
 }
 
 // Parse work orders from HTML
-function parseWorkOrders(html) {
+function parseWorkOrders(html, options = {}) {
     const $ = cheerio.load(html);
     const workOrders = [];
     const seenIds = new Set();
@@ -117,18 +176,28 @@ function parseWorkOrders(html) {
         const headerText = $el.text().toLowerCase();
 
         // Check if this looks like a header row
-        if (headerText.includes('incident') || headerText.includes('summary')) {
+        if (headerText.includes('incident') || headerText.includes('summary') || headerText.includes('service') || headerText.includes('solution') || headerText.includes('closed')) {
             $el.find('th, td').each((i, cell) => {
                 const text = $(cell).text().trim().toLowerCase();
+                if (text.includes('service') && text.includes('no')) columnMap.serviceNo = i;
+                if (text.includes('service') && text.includes('number')) columnMap.serviceNo = i;
+                if (text.includes('no') && text.includes('layanan')) columnMap.serviceNo = i;
+                if (text.includes('no') && text.includes('internet')) columnMap.serviceNo = i;
                 if (text.includes('booking')) columnMap.bookingDate = i;
                 if (text.includes('customer') && text.includes('segment')) columnMap.customerSegment = i;
                 if (text.includes('workzone')) columnMap.workzone = i;
                 if (text.includes('witel')) columnMap.witel = i;
                 if (text.includes('status')) columnMap.status = i;
-                if (text.includes('reported')) columnMap.reportedDate = i;
+                if (text.includes('reported') && text.includes('by')) columnMap.reportedBy = i;
+                if (text.includes('reported') && !text.includes('by')) columnMap.reportedDate = i;
                 if (text.includes('source') && text.includes('ticket')) columnMap.sourceTicket = i;
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
+                if (text.includes('lapul')) columnMap.lapul = i;
+                if (text.includes('gaul')) columnMap.gaul = i;
+                if (text.includes('resolve') && text.includes('date')) columnMap.resolveDate = i;
+                if (text.includes('actual') && (text.includes('solution') || text.includes('description') || text.includes('solusi'))) columnMap.actualSolution = i;
+                if (text.includes('technician') || text.includes('petugas') || (text.includes('closed') && text.includes('by'))) columnMap.technician = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
@@ -227,7 +296,14 @@ function parseWorkOrders(html) {
         let sourceTicket = 'UNKNOWN';
         let deviceName = null;
         let rkInformation = null;
-
+        let serviceNo = null;
+        let reportedBy = null;
+        let lapul = '-';
+        let gaul = '-';
+        let resolveDate = '-';
+        let actualSolution = '-';
+        let technician = '-';
+ 
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
             bookingDate = cells[columnMap.bookingDate];
@@ -257,11 +333,32 @@ function parseWorkOrders(html) {
         if (columnMap.rkInformation !== undefined && cells[columnMap.rkInformation]) {
             rkInformation = cells[columnMap.rkInformation].trim();
         }
-
+        if (columnMap.serviceNo !== undefined && cells[columnMap.serviceNo]) {
+            serviceNo = cells[columnMap.serviceNo].trim();
+        }
+        if (columnMap.reportedBy !== undefined && cells[columnMap.reportedBy]) {
+            reportedBy = cells[columnMap.reportedBy].trim();
+        }
+        if (columnMap.lapul !== undefined && cells[columnMap.lapul]) {
+            lapul = cells[columnMap.lapul].trim();
+        }
+        if (columnMap.gaul !== undefined && cells[columnMap.gaul]) {
+            gaul = cells[columnMap.gaul].trim();
+        }
+        if (columnMap.actualSolution !== undefined && cells[columnMap.actualSolution]) {
+            actualSolution = cells[columnMap.actualSolution].trim();
+        }
+        if (columnMap.technician !== undefined && cells[columnMap.technician]) {
+            technician = cells[columnMap.technician].trim();
+        }
+        if (columnMap.resolveDate !== undefined && cells[columnMap.resolveDate]) {
+            resolveDate = cells[columnMap.resolveDate].trim();
+        }
+ 
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             if (!cell) continue;
-
+ 
             // Customer type pattern
             if (cell.match(/^(HVC_?(PLATINUM|DIAMOND|GOLD)|REGULER)$/i)) {
                 customerType = cell.toUpperCase().replace(/[-\s]/g, '_');
@@ -269,10 +366,6 @@ function parseWorkOrders(html) {
             // Status pattern
             if (cell.match(/^(OPEN|IN_PROGRESS|BACKEND|CLOSED|RESOLVED|CANCELLED)$/i)) {
                 status = cell.toUpperCase();
-            }
-            // Workzone pattern (like TPI, KMS, TUB, KIJ)
-            if (cell.match(/^[A-Z]{3}$/)) {
-                workzone = cell;
             }
             // Customer segment pattern (like PL-TSEL, DGS, ENTERPRISE, PERSONAL, PEMERINTAH, etc.)
             if (cell.match(/^(PL-TSEL|DGS|DBS|DES|DSS|DPS|ENTERPRISE|PERSONAL|PEMERINTAH|WHOLESALE|BUSINESS|CONSUMER|GOVERNMENT|SOE|MEDIUM|SMALL)$/i)) {
@@ -282,8 +375,28 @@ function parseWorkOrders(html) {
             if (sourceTicket === 'UNKNOWN' && cell.match(/^(CUSTOMER|PROACTIVE|GAMAS|SQM)$/i)) {
                 sourceTicket = cell.toUpperCase();
             }
+            // Service number pattern (e.g. 12-digit number starting with 1, 2, or 3)
+            if (!serviceNo && cell.match(/^(111|12|13|14|15|16|17|18|19)\d{9}$/)) {
+                serviceNo = cell;
+            }
         }
 
+        // Extract workzone from deviceName (ODP) or rkInformation (ODC) to prevent false matches from customer names
+        const searchWz = (str) => {
+            if (!str) return null;
+            const parts = str.toUpperCase().split(/[^A-Z]/);
+            for (const part of parts) {
+                if (part.length === 3 && part !== 'ODP' && part !== 'ODC') {
+                    return part;
+                }
+            }
+            return null;
+        };
+        const extractedWz = searchWz(deviceName) || searchWz(rkInformation);
+        if (extractedWz) {
+            workzone = extractedWz;
+        }
+ 
         const ticket = {
             uuid: uuid, // Added UUID
             orderId: orderId,
@@ -302,6 +415,13 @@ function parseWorkOrders(html) {
             sourceTicket: sourceTicket,
             deviceName: deviceName,
             rkInformation: rkInformation,
+            serviceNo: serviceNo,
+            reportedBy: reportedBy || sourceTicket,
+            lapul: lapul || '-',
+            gaul: gaul || '-',
+            resolveDate: resolveDate || '-',
+            actualSolution: actualSolution || '-',
+            technician: technician || '-',
             source: 'Scraper'
         };
 
@@ -312,8 +432,8 @@ function parseWorkOrders(html) {
             ticket.expiredDate = calculateExpiredDate(ticket.reportedDate, ticket.customerType);
         }
 
-        // Skip closed tickets - only process active ones
-        if (status === 'CLOSED' || status === 'RESOLVED' || status === 'CANCELLED') {
+        // Skip closed tickets - only process active ones unless includeClosed is requested
+        if (!options.includeClosed && (status === 'CLOSED' || status === 'RESOLVED' || status === 'CANCELLED')) {
             console.log(`⏭️ Skipping closed ticket: ${orderId}`);
             return;
         }
@@ -650,7 +770,20 @@ export function formatWorkOrderMessage(wo) {
  * otherwise creates a new headless browser with saved session
  */
 async function getScrapePage() {
-    // First, try to use the browser monitor's page (already logged in)
+    // 1. Try to open a new tab in the active browser monitor instance
+    const monitorBrowser = getBrowserInstance();
+    if (monitorBrowser && monitorBrowser.isConnected()) {
+        console.log('📡 Opening a new tab in the active browser monitor...');
+        try {
+            const newPage = await monitorBrowser.newPage();
+            await newPage.setViewport({ width: 1366, height: 768 });
+            return { page: newPage, isShared: false };
+        } catch (e) {
+            console.log('⚠️ Failed to open new tab in browser monitor, falling back to shared page:', e.message);
+        }
+    }
+
+    // Fallback: try to use the browser monitor's active page (already logged in)
     const monitorPage = getPageInstance();
     if (monitorPage) {
         console.log('📡 Using active browser monitor session (GOOD!)');
@@ -669,7 +802,16 @@ async function getScrapePage() {
     console.log('⚠️ ============================================');
     console.log('');
 
-    // If browser monitor is not running, create own headless browser
+    // If ownBrowser is disconnected, clear it to force relaunch
+    if (ownBrowser && !ownBrowser.isConnected()) {
+        console.log('⚠️ Headless browser disconnected/crashed. Cleaning up to relaunch...');
+        try {
+            await ownBrowser.close();
+        } catch (e) {}
+        ownBrowser = null;
+    }
+
+    // 2. If browser monitor is not running, create own headless browser
     if (!ownBrowser) {
         console.log('🌐 Creating headless browser with saved session...');
 
@@ -700,7 +842,7 @@ async function getScrapePage() {
         }
 
         ownBrowser = await puppeteer.launch({
-            headless: 'new',
+            headless: 'shell',
             executablePath: executablePath,
             userDataDir: userDataDir,
             args: [
@@ -709,20 +851,25 @@ async function getScrapePage() {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote'
+                '--disable-features=Vulkan',
+                '--disable-gpu-sandbox',
+                '--disable-software-rasterizer',
+                '--disable-widevine-cdm',
+                '--disable-component-update',
+                '--disable-bundled-ppapi-plugins',
+                '--disable-extensions'
             ],
             defaultViewport: {
                 width: 1280,
                 height: 800
             }
         });
-
-        ownPage = await ownBrowser.newPage();
         console.log('✅ Headless browser ready');
     }
 
-    return { page: ownPage, isShared: false };
+    // Always create a new tab in ownBrowser so that it can be closed by the caller safely!
+    const newPage = await ownBrowser.newPage();
+    return { page: newPage, isShared: false };
 }
 
 /**
@@ -752,19 +899,21 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         // --- AUTO SHIFT DATES LOGIC ---
         if (config.autoShiftDates === 'true' && config.filterDateTo) {
             try {
-                const nowWib = getWIBDate();
-                const configTo = new Date(config.filterDateTo.replace('T', ' '));
-                const configFrom = new Date((config.filterDateFrom || '').replace('T', ' '));
+                const now = new Date();
+                // Parse database configs with +07:00 (WIB) offset to prevent server timezone drift
+                const configTo = new Date(config.filterDateTo.includes('+') || config.filterDateTo.includes('Z') ? config.filterDateTo : config.filterDateTo + '+07:00');
+                const configFrom = new Date(config.filterDateFrom ? (config.filterDateFrom.includes('+') || config.filterDateFrom.includes('Z') ? config.filterDateFrom : config.filterDateFrom + '+07:00') : now);
 
-                // Only proceed if both dates are valid
                 if (!isNaN(configTo.getTime()) && !isNaN(configFrom.getTime())) {
-                    // Create "Today at 23:00 WIB" as the target end point
-                    const targetTo = new Date(nowWib);
-                    targetTo.setHours(23, 0, 0, 0);
+                    // Get today's date in WIB
+                    const todayWibStr = formatToWIB(now).slice(0, 10); // YYYY-MM-DD
 
-                    // Only shift if targetTo is ahead of current configTo
-                    if (targetTo.getTime() > configTo.getTime()) {
-                    const daysDiff = Math.floor((targetTo.getTime() - configTo.getTime()) / (24 * 60 * 60 * 1000));
+                    // Reset both to midnight WIB (+07:00) to calculate pure calendar days difference
+                    const d1 = new Date(todayWibStr + 'T00:00:00+07:00');
+                    const configToDateStr = formatToWIB(configTo).slice(0, 10);
+                    const d2 = new Date(configToDateStr + 'T00:00:00+07:00');
+
+                    const daysDiff = Math.floor((d1.getTime() - d2.getTime()) / (24 * 60 * 60 * 1000));
 
                     if (daysDiff > 0) {
                         console.log(`📅 [Scraper] Auto-shifting dates forward by ${daysDiff} days...`);
@@ -775,7 +924,7 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                         const newFrom = new Date(configFrom);
                         newFrom.setDate(configFrom.getDate() + daysDiff);
 
-                        // Format back to YYYY-MM-DDTHH:mm (HTML datetime-local format)
+                        // Format back to YYYY-MM-DDTHH:mm (HTML datetime-local format) in WIB
                         const fmtTo = formatToWIB(newTo).slice(0, 16).replace(' ', 'T');
                         const fmtFrom = formatToWIB(newFrom).slice(0, 16).replace(' ', 'T');
 
@@ -790,14 +939,13 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                         console.log(`✅ [Scraper] Dates updated: ${fmtFrom} to ${fmtTo}`);
                     }
                 }
-                }
             } catch (err) {
                 console.error('❌ [Scraper] Failed to auto-shift dates:', err.message);
             }
         }
 
-        // 2. Check if we have filters to apply
-        if (config.filterDateFrom || config.filterDateTo || (!options.skipConfigOverrides && config.filterWorkzone) || (!options.skipConfigOverrides && config.filterStatus)) {
+        // 2. Check if we have filters to apply (skip completely if skipConfigOverrides is true)
+        if (!options.skipConfigOverrides && (config.filterDateFrom || config.filterDateTo || config.filterWorkzone || config.filterStatus)) {
             console.log('🔧 Applying manual filters to URL...');
 
             const urlObj = new URL(baseUrl);
@@ -881,6 +1029,27 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         // Wait a bit for dynamic content
         await new Promise(resolve => setTimeout(resolve, 2000));
 
+        // Check if we are logged in. If not (and not currently on login page), force navigation to login and login.
+        const loggedIn = await isLoggedIn(page);
+        if (!loggedIn && !(await isLoginPage(page))) {
+            console.log('🔐 Session is guest/not logged in. Navigating to login page for auto-login...');
+            const { loadCredentials } = await import('./auth.js');
+            const credentials = loadCredentials();
+            if (credentials) {
+                await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
+                    waitUntil: 'networkidle2',
+                    timeout: 45000
+                });
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    console.log('✅ Auto-login successful! Returning to target URL...');
+                    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                } else {
+                    console.log('⚠️ Forced auto-login failed:', loginResult.message);
+                }
+            }
+        }
+
         // Check if we're on login page and auto-login if needed
         if (await isLoginPage(page)) {
             console.log('🔐 Login page detected during scraping, attempting auto-login...');
@@ -934,6 +1103,10 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         const workOrders = parseWorkOrders(html);
 
         console.log(`📋 Found ${workOrders.length} work orders`);
+        
+        if (workOrders.length === 0) {
+            console.log(`🔍 [DEBUG] HTML Snippet (first 1500 chars):`, html.substring(0, 1500).replace(/\s+/g, ' '));
+        }
 
         if (workOrders.length > 0) {
             console.log(`📌 Sample work order:`, JSON.stringify(workOrders[0], null, 2));
@@ -1054,22 +1227,26 @@ export function isScrapingRunning() {
  * Returns the updated work order object with address/coords
  */
 export async function scrapeSingleTicket(orderId) {
-    console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
-
-    // 1. Get browser page
-    const { page, isShared } = await getScrapePage();
-
-    // Ensure we are on the dashboard/base URL first or at least have the nav bar
-    const config = getConfig();
-    const baseUrl = config.targetUrl;
-
+    let scrapedPage = null;
+    let isPageShared = true;
     try {
+        console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
+
+        // 1. Get browser page
+        const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
+
+        // Ensure we are on the dashboard/base URL first or at least have the nav bar
+        const config = getConfig();
+        const baseUrl = config.targetUrl;
+
         // If we are not on a page with the search bar, go to base URL
         let searchInput = await page.$('input[placeholder*="Find Incident"]');
 
         if (!searchInput) {
             console.log('🔄 Search bar not found, navigating to dashboard...');
-            await page.goto(baseUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+            await safeGoto(page, baseUrl, 60000);
             // Wait for it to be actually visible
             searchInput = await page.waitForSelector('input[placeholder*="Find Incident"]', { visible: true, timeout: 15000 });
         }
@@ -1092,23 +1269,18 @@ export async function scrapeSingleTicket(orderId) {
 
 
         // Type to ensure events trigger, then Enter
-        await page.keyboard.type(orderId);
+        await page.type('input[placeholder*="Find Incident"]', orderId);
         await page.keyboard.press('Enter');
 
         console.log(`⏳ Searching for ${orderId}...`);
 
-        // 3. Wait for navigation or result
-        // The search might redirect to detail page OR filter the list.
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(e => console.log('⚠️ Navigation timeout or didn\'t happen, checking current state...'));
-
-        // 4. Check where we are
-        const url = page.url();
-        console.log(`📍 Current URL after search: ${url}`);
+        // 3. Wait for list to update or direct navigation
+        await new Promise(r => setTimeout(r, 2000));
 
         let uuid = null;
-        if (url.includes('_mode=edit') && url.includes('id=')) {
+        if (page.url().includes('_mode=edit') && page.url().includes('id=')) {
             // Likely detail page
-            const match = url.match(/id=([^&]+)/);
+            const match = page.url().match(/id=([^&]+)/);
             if (match) uuid = match[1];
         } else {
             // Maybe we are still on list page (filtered)?
@@ -1145,7 +1317,18 @@ export async function scrapeSingleTicket(orderId) {
         }
 
         if (!uuid) {
-            throw new Error(`Could not navigate to detail page for ${orderId}. Search might have returned no results.`);
+            throw new Error(`Ticket ${orderId} not found or could not get detail URL.`);
+        }
+
+        // 4. Double check login session before entering details
+        if (await isLoginPage(page)) {
+            console.log('🔐 Session expired on detail redirect. Logging back in...');
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                // Retry navigate to ticket
+                const detailUrl = `${baseUrl.replace(/\/allTicketList.*/, '')}/ticketIncidentService/_/allTicketList?_mode=edit&id=${uuid}`;
+                await safeGoto(page, detailUrl, 60000);
+            }
         }
 
         console.log(`✅ On detail page for ${orderId} (UUID: ${uuid})`);
@@ -1170,5 +1353,198 @@ export async function scrapeSingleTicket(orderId) {
     } catch (error) {
         console.error(`❌ [Manual Scrape] Error for ${orderId}:`, error.message);
         throw error;
+    } finally {
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for manual scrape...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
+    }
+}
+
+/**
+ * Scrapes both Reguler tickets and Proactive Inbox (SQM & UNSPEC OHI) sequentially.
+ * Prevents overlapping with other scraper runs using isScrapingNow.
+ */
+export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl) {
+    let scrapedPage = null;
+    let isPageShared = true;
+    try {
+        console.log('🔍 [Scraper] Starting proactive & reguler scraping process...');
+
+        const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
+
+        // --- 1. SCRAPE REGULER TICKETS ---
+        console.log(`🔍 [Scraper] Navigating to Reguler URL: ${regulerBaseUrl}`);
+        await safeGoto(page, regulerBaseUrl, 60000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Auto login if guest
+        const loggedInReg = await isLoggedIn(page);
+        if (!loggedInReg && !(await isLoginPage(page))) {
+            console.log('🔐 Session is guest. Navigating to login page...');
+            const { loadCredentials } = await import('./auth.js');
+            const credentials = loadCredentials();
+            if (credentials) {
+                await safeGoto(page, credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", 45000);
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    await safeGoto(page, regulerBaseUrl, 60000);
+                }
+            }
+        }
+        if (await isLoginPage(page)) {
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                if (await isLoginPage(page)) {
+                    await handleTOTPPage(page);
+                }
+                await safeGoto(page, regulerBaseUrl, 60000);
+            }
+        }
+
+        const htmlReg1 = await page.content();
+        let regulerTickets = parseWorkOrders(htmlReg1);
+        console.log(`📋 [Scraper] Found ${regulerTickets.length} reguler tickets on page 1`);
+
+        // Check page 2 for reguler if page 1 is full
+        if (regulerTickets.length >= 30) {
+            try {
+                const regulerUrlP2 = regulerBaseUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
+                console.log(`📋 [Scraper] Reguler Page 1 full, navigating to Page 2: ${regulerUrlP2}`);
+                await safeGoto(page, regulerUrlP2, 45000);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                const htmlReg2 = await page.content();
+                const regulerTicketsP2 = parseWorkOrders(htmlReg2);
+                console.log(`📋 [Scraper] Found ${regulerTicketsP2.length} reguler tickets on page 2`);
+                regulerTickets = [...regulerTickets, ...regulerTicketsP2];
+            } catch (err) {
+                console.error('⚠️ Failed to scrape reguler page 2:', err.message);
+            }
+        }
+
+        // Deduplicate Reguler tickets and keep only customer source
+        const seenRegIds = new Set();
+        const finalReguler = [];
+        for (const wo of regulerTickets) {
+            if (!seenRegIds.has(wo.orderId)) {
+                seenRegIds.add(wo.orderId);
+                if (wo.sourceTicket === 'CUSTOMER') {
+                    finalReguler.push(wo);
+                }
+            }
+        }
+
+        // --- 2. SCRAPE PROACTIVE TICKETS (SQM & UNSPEC) ---
+        let proactiveTickets = [];
+        let pageNum = 1;
+        let hasMore = true;
+
+        while (hasMore && pageNum <= 5) {
+            const paginatedProactiveUrl = proactiveBaseUrl
+                .replace(/d-6878233-p=\d+/, `d-6878233-p=${pageNum}`)
+                .replace(/d-6878233-ps=\d+/, 'd-6878233-ps=100');
+
+            console.log(`🔍 [Scraper] Navigating to Proactive URL Page ${pageNum}: ${paginatedProactiveUrl}`);
+            await safeGoto(page, paginatedProactiveUrl, 60000);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Check login just in case
+            if (await isLoginPage(page)) {
+                const loginResult = await performAutoLogin(page);
+                if (loginResult.success) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    await safeGoto(page, paginatedProactiveUrl, 60000);
+                }
+            }
+
+            const htmlProactive = await page.content();
+            const pageTickets = parseWorkOrders(htmlProactive);
+            console.log(`📋 [Scraper] Found ${pageTickets.length} proactive tickets on page ${pageNum}`);
+            proactiveTickets = [...proactiveTickets, ...pageTickets];
+
+            if (pageTickets.length < 100) {
+                hasMore = false;
+            } else {
+                pageNum++;
+            }
+        }
+
+        // Deduplicate proactive tickets
+        const seenProactiveIds = new Set();
+        const finalProactive = [];
+        for (const wo of proactiveTickets) {
+            if (!seenProactiveIds.has(wo.orderId)) {
+                seenProactiveIds.add(wo.orderId);
+                finalProactive.push(wo);
+            }
+        }
+
+        // Filter into SQM (PROACTIVE_TICKET) and UNSPEC (PROACTIVE_OHI)
+        const sqmTickets = finalProactive.filter(wo => {
+            const repBy = (wo.reportedBy || '').toUpperCase();
+            const src = (wo.sourceTicket || '').toUpperCase();
+            return repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET');
+        });
+
+        const unspecTickets = finalProactive.filter(wo => {
+            const repBy = (wo.reportedBy || '').toUpperCase();
+            const src = (wo.sourceTicket || '').toUpperCase();
+            return repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI');
+        });
+
+        console.log(`✅ [Scraper] Scraped summary: Reguler=${finalReguler.length}, SQM=${sqmTickets.length}, UNSPEC=${unspecTickets.length}`);
+        return {
+            reguler: finalReguler,
+            sqm: sqmTickets,
+            unspec: unspecTickets
+        };
+
+    } finally {
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for proactive & reguler...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
+    }
+}
+
+export async function scrapeClosedTickets(closedUrl) {
+    let scrapedPage = null;
+    let isPageShared = true;
+    try {
+        const { page, isShared } = await getScrapePage();
+        scrapedPage = page;
+        isPageShared = isShared;
+        console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
+        await safeGoto(page, closedUrl, 60000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Check if we hit the login page
+        if (await isLoginPage(page)) {
+            console.log('🔐 [Closed Scraper] Session expired. Performing auto-login...');
+            const loginResult = await performAutoLogin(page);
+            if (loginResult.success) {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                if (await isLoginPage(page)) {
+                    await handleTOTPPage(page);
+                }
+                await safeGoto(page, closedUrl, 60000);
+            }
+        }
+
+        const html = await page.content();
+        const tickets = parseWorkOrders(html, { includeClosed: true });
+        console.log(`📋 [Closed Scraper] Parsed ${tickets.length} closed tickets`);
+        return tickets;
+    } catch (err) {
+        console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
+        throw err;
+    } finally {
+        if (scrapedPage && !isPageShared) {
+            console.log('♻️ Closing temporary tab for closed tickets...');
+            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
     }
 }

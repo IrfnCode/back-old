@@ -5,7 +5,7 @@ import { registerTangibleHandler } from './handle_tangible.js';
 import { registerMtcHandler } from './handle_mtc.js';
 import { registerDatekHandler } from './handle_datek.js';
 import { registerPsbInputHandler, registerPsbRekapHandler } from './handle_psb.js';
-import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkersForDate, updateRekap, getConfig } from './database.js';
+import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkOrdersByServiceNo, getWorkersForDate, updateRekap, getConfig } from './database.js';
 import { askAI } from './ai.js';
 import { formatToWIB, getWIBDay, getWIBMonth, getWIBYear } from '../utils/time.js';
 
@@ -17,7 +17,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
     if (tokenGangguan) {
         try {
             if (botGangguan) {
-                botGangguan.stopPolling().catch(() => {});
+                botGangguan.stopPolling().catch(() => { });
             }
             botGangguan = new TelegramBot(tokenGangguan, { polling: false });
 
@@ -30,7 +30,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
             registerGangguanHandlers(botGangguan);
 
             // Delete webhook first to avoid 409 Conflict with polling, then start polling
-            botGangguan.deleteWebhook()
+            botGangguan.deleteWebHook()
                 .then(() => {
                     console.log('✅ Webhook deleted for Gangguan Bot, starting polling...');
                     return botGangguan.startPolling();
@@ -53,7 +53,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
     if (tokenDatek) {
         try {
             if (botDatek) {
-                botDatek.stopPolling().catch(() => {});
+                botDatek.stopPolling().catch(() => { });
             }
             botDatek = new TelegramBot(tokenDatek, { polling: false });
 
@@ -66,7 +66,7 @@ export function initTelegramBots(tokenGangguan, tokenDatek) {
             registerDatekBotHandlers(botDatek);
 
             // Delete webhook first to avoid 409 Conflict with polling, then start polling
-            botDatek.deleteWebhook()
+            botDatek.deleteWebHook()
                 .then(() => {
                     console.log('✅ Webhook deleted for Datek Bot, starting polling...');
                     return botDatek.startPolling();
@@ -95,18 +95,44 @@ function registerGangguanHandlers(bot) {
     // Handle /start command
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
-        bot.sendMessage(chatId,
-            `🤖 *Work Order Bot (Gangguan) Aktif!*
+        const helpText =
+`🤖 <b>Work Order Bot (Gangguan) Aktif!</b>
 
-Chat ID Anda: \`${chatId}\`
+Halo! Bot MORENA siap membantu memantau tiket Insera.
+Chat ID Anda: <code>${chatId}</code>
 
-Gunakan Chat ID ini di konfigurasi web untuk menerima notifikasi work order.
+━━━━━━━━━━━━━━━━━━━━━
+📋 <b>DAFTAR COMMAND</b>
+━━━━━━━━━━━━━━━━━━━━━
 
-Commands:
+<b>📊 INFO &amp; STATUS</b>
+/start - Tampilkan menu ini
 /status - Cek status bot
-/help - Bantuan`,
-            { parse_mode: 'Markdown' }
-        );
+/help - Bantuan lengkap
+
+<b>🎫 TIKET</b>
+/tiketaktif - Tiket aktif per STO
+/info [INC] - Detail summary tiket
+/caritiket [no.internet] - Cari tiket by service no
+
+<b>📝 INPUT REKAP</b>
+/input - Input rekap close gangguan
+/unspec - Input rekap UNSPEC
+/tangible - Input rekap TANGIBLE
+/mtc - Input rekap Maintenance
+
+<b>📊 GOOGLE SPREADSHEET</b>
+/scrapsheet - Scraping &amp; ekspor sekali
+/scrapsheetauto [menit] - Mulai auto-scraping (default 60 mnt)
+/scrapsheetstop - Hentikan auto-scraping
+/scrapsheetstatus - Cek status auto-scraping
+
+<b>⚙️ LAINNYA</b>
+/jadwal - Cek jadwal teknisi
+/del - Hapus pesan bot
+/admin - Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`;
+        bot.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
     });
 
     // Handle /status command
@@ -122,28 +148,44 @@ Chat ID: \`${chatId}\``,
         );
     });
 
-    // Handle /help command  
     bot.onText(/\/help/, (msg) => {
         const chatId = msg.chat.id;
-        bot.sendMessage(chatId,
-            `📚 *Work Order Bot Command List*
+        const helpText =
+`📚 <b>Work Order Bot - Bantuan Lengkap</b>
+Chat ID: <code>${chatId}</code>
 
-Bot ini akan mengirimkan notifikasi setiap ada work order baru dari hasil scraping INSERA.
+━━━━━━━━━━━━━━━━━━━━━
+📋 <b>DAFTAR COMMAND</b>
+━━━━━━━━━━━━━━━━━━━━━
 
-Chat ID Anda: \`${chatId}\`
+<b>📊 INFO &amp; STATUS</b>
+/start - Tampilkan menu utama
+/status - Cek status bot
+/help - Bantuan lengkap
 
-*Commands:*
-/start - Mulai bot
-/status - Cek status
+<b>🎫 TIKET</b>
+/tiketaktif - Tiket aktif per STO
+/info [INC] - Detail summary tiket
+/caritiket [no.internet] - Cari tiket by service no
+
+<b>📝 INPUT REKAP</b>
 /input - Input rekap close gangguan
 /unspec - Input rekap UNSPEC
 /tangible - Input rekap TANGIBLE
 /mtc - Input rekap Maintenance
-/info - Cek detail tiket
+
+<b>📊 GOOGLE SPREADSHEET</b>
+/scrapsheet - Scraping &amp; ekspor sekali
+/scrapsheetauto [menit] - Mulai auto-scraping (default 60 mnt)
+/scrapsheetstop - Hentikan auto-scraping
+/scrapsheetstatus - Cek status auto-scraping
+
+<b>⚙️ LAINNYA</b>
 /jadwal - Cek jadwal teknisi
 /del - Hapus pesan bot
-/help - Tampilkan bantuan`,
-        );
+/admin - Panel mode AI
+━━━━━━━━━━━━━━━━━━━━━`;
+        bot.sendMessage(chatId, helpText, { parse_mode: 'HTML' });
     });
 
     // AI Processing Lock
@@ -201,7 +243,7 @@ Chat ID Anda: \`${chatId}\`
                 userState.set(chatId, { mode: 'admin', status: 'idle' });
                 bot.sendMessage(chatId, "✅ *PIN BENAR*\n\n🔴 *AI NO FILTER AKTIF!*\n\nAnda sekarang dapat mengedit data langsung lewat AI. Hati-hati, setiap perubahan akan terekam.", { parse_mode: 'Markdown' });
                 // Delete PIN message for security
-                bot.deleteMessage(chatId, msg.message_id).catch(() => {});
+                bot.deleteMessage(chatId, msg.message_id).catch(() => { });
             } else if (/^\d+$/.test(msg.text)) {
                 bot.sendMessage(chatId, "❌ PIN Salah. Akses ditolak.");
                 userState.set(chatId, { mode: 'normal', status: 'idle' });
@@ -336,83 +378,394 @@ Chat ID Anda: \`${chatId}\`
         }
     });
 
-    // Handle /tiketaktif command
+    // Handle /caritiket command
+    bot.onText(/\/caritiket(.*)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const input = match[1] ? match[1].trim() : '';
+
+        if (!input) {
+            return bot.sendMessage(chatId, 'ℹ️ <b>Cara Penggunaan:</b>\nKetik <code>/caritiket &lt;NOMOR_INTERNET&gt;</code>\nContoh: <code>/caritiket 111123456</code>', { parse_mode: 'HTML' });
+        }
+
+        const serviceNo = input.split(' ')[0];
+        const results = getWorkOrdersByServiceNo(serviceNo);
+
+        if (results && results.length > 0) {
+            await bot.sendMessage(chatId, `🔍 Menemukan ${results.length} tiket untuk nomor internet <b>${serviceNo}</b>:`, { parse_mode: 'HTML' });
+            for (const wo of results) {
+                await sendWorkOrderNotification(chatId, wo, '', true);
+                // Delay 500ms between messages to avoid rate limit
+                await new Promise(r => setTimeout(r, 500));
+            }
+        } else {
+            await bot.sendMessage(chatId, `❌ Tiket untuk nomor internet <b>${serviceNo}</b> tidak ditemukan`, { parse_mode: 'HTML' });
+        }
+    });
+
+
+    // ─────────────────────────────────────────────────────────────
+    // HELPER: build URLs and run scrape+export, return result summary
+    // ─────────────────────────────────────────────────────────────
+    const runScrapSheet = async () => {
+        const { exportProactiveToSpreadsheet, exportClosedToSpreadsheet, exportDashboardToSpreadsheet } = await import('./gdocs.js');
+        const { scrapeProactiveAndReguler, scrapeClosedTickets } = await import('./scraper.js');
+
+        const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+        const openSheetName = 'TIKET OPEN';
+        const closedSheetName = 'TIKET CLOSE';
+
+        // Build dynamic WIB date range (2 days ago → today) for active
+        const toWIBDate = (d) => {
+            const wib = new Date(d.getTime() + 7 * 3600000);
+            const y = wib.getUTCFullYear();
+            const m = String(wib.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(wib.getUTCDate()).padStart(2, '0');
+            return `${y}-${m}-${dd}`;
+        };
+        const now = new Date();
+        const past = new Date(now); past.setDate(now.getDate() - 2);
+        const dateFrom = toWIBDate(past) + ' 00:00';
+        const dateTo   = toWIBDate(now)  + ' 23:59';
+
+        const regulerUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateTo)}&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CTUB%2CKIJ%2CTER%2CRAI%2CDBS&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+
+        const proactiveUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/inboxTicketProactive?d-6878233-p=1&d-6878233-ps=100&d-6878233-fn_reported_date_filter=&d-6878233-fn_reported_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_status_date_filter=&d-6878233-fn_C_OWNER_GROUP=&d-6878233-fn_C_OWNER=&d-6878233-fn_C_REPORTED_PRIORITY=&d-6878233-fn_C_SOURCE_TICKET=&d-6878233-fn_C_EXTERNAL_TICKETID=&d-6878233-fn_C_CHANNEL=&d-6878233-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-6878233-fn_C_CUSTOMER_TYPE=&d-6878233-fn_C_SERVICE_NO=&d-6878233-fn_C_SERVICE_TYPE=&d-6878233-fn_C_SERVICE_ID=&d-6878233-fn_C_SLG=&d-6878233-fn_C_KODE_PRODUK=&d-6878233-fn_DATEMODIFIED=&d-6878233-fn_C_CLOSED_BY=&d-6878233-fn_C_WORK_ZONE=TPI%2CTUB%2CKIJ%2CKMS%2CPYT%2CDBS%2CTER%2CRAI&d-6878233-fn_C_WITEL=&d-6878233-fn_C_REGION=&d-6878233-fn_C_ID_TICKET=&d-6878233-fn_C_ACTUAL_SOLUTION=&d-6878233-fn_C_CLASSIFICATION_PATH=&d-6878233-fn_C_INCIDENT_DOMAIN=&d-6878233-fn_C_TICKET_STATUS=&d-6878233-fn_C_PERANGKAT=&d-6878233-fn_C_DESCRIPTION_ASSIGMENT=&d-6878233-fn_C_CLASSIFICATION_CATEGORY=&d-6878233-fn_C_REALM=&d-6878233-fn_C_PIPE_NAME=&d-6878233-fn_C_CUSTOMER_ID=&d-6878233-fn_C_RELATED_TO_GAMAS=&d-6878233-fn_C_TICKET_ID_GAMAS=&d-6878233-fn_C_GUARANTE_STATUS=&d-6878233-fn_C_DESCRIPTION_CUSTOMERID=`;
+
+        // Build dynamic WIB date ranges for closed tickets
+        // repFrom = 2 hari lalu 00:00, repTo = hari ini 23:00
+        // statFrom/To = hari ini (berlaku untuk kedua URL)
+        const repPast  = new Date(now); repPast.setDate(now.getDate() - 2);
+        const repFrom  = toWIBDate(repPast) + ' 00:00';  // 2 hari lalu 00:00
+        const repTo    = toWIBDate(now)     + ' 23:00';  // hari ini 23:00
+        const statFrom = toWIBDate(now)     + ' 00:00';  // hari ini 00:00
+        const statTo   = toWIBDate(now)     + ' 23:00';  // hari ini 23:00
+
+        const closedUrl1 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-5564009-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-5564009-fn_status_date_filter=${encodeURIComponent(statTo)}&d-5564009-fn_C_OWNER_GROUP=&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=PROACTIVE%2CCUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=CLOSE%2CCLOSED%2CFINALCHECK%2CMEDIACARE%2CSALAMSIM&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+
+        const closedUrl2 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
+
+        const openData = await scrapeProactiveAndReguler(regulerUrl, proactiveUrl);
+        
+        // Scrape both sources
+        const closedTickets1 = await scrapeClosedTickets(closedUrl1);
+        const closedTickets2 = await scrapeClosedTickets(closedUrl2);
+
+        // Deduplicate closed tickets by ID
+        const seenClosedIds = new Set();
+        const combinedClosedData = [];
+        [...closedTickets1, ...closedTickets2].forEach(wo => {
+            const inc = wo.orderId || wo.order_id;
+            if (inc && inc.match(/^INC\d+$/) && !seenClosedIds.has(inc)) {
+                seenClosedIds.add(inc);
+                combinedClosedData.push(wo);
+            }
+        });
+
+        await exportProactiveToSpreadsheet(spreadsheetId, openSheetName, openData.reguler, openData.sqm, openData.unspec);
+        const exportClosedRes = await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, combinedClosedData);
+        try {
+            await exportDashboardToSpreadsheet(spreadsheetId, 'DASHBOARD');
+        } catch (dbErr) {
+            console.error('⚠️ Failed to generate DASHBOARD:', dbErr.message);
+        }
+
+        return {
+            reguler: openData.reguler,
+            sqm: openData.sqm,
+            unspec: openData.unspec,
+            closedCount: combinedClosedData.length,
+            totalClosedCount: exportClosedRes.totalClosedCount,
+            spreadsheetId
+        };
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // /scrapsheet — manual trigger (one-time)
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/scrapsheet$/, async (msg) => {
+        const chatId = msg.chat.id;
+        const loadingMsg = await bot.sendMessage(chatId, '⏳ Scraping & ekspor ke Google Sheets...');
+        try {
+            const data = await runScrapSheet();
+            const link = `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}`;
+            await bot.editMessageText(
+                `📊 <b>Sync Sukses!</b>\n\n` +
+                `🔹 <b>Reguler (Open):</b> ${data.reguler.length} tiket\n` +
+                `🔸 <b>SQM (Open):</b> ${data.sqm.length} tiket\n` +
+                `🔹 <b>UNSPEC (Open):</b> ${data.unspec.length} tiket\n` +
+                `✅ <b>Closed Baru:</b> ${data.closedCount} tiket (Total di sheet: ${data.totalClosedCount})\n\n` +
+                `📝 Sheet: <b>TIKET OPEN</b> &amp; <b>TIKET CLOSE</b>\n` +
+                `🔗 <a href="${link}">Buka Google Spreadsheet</a>`,
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML', disable_web_page_preview: true }
+            );
+        } catch (err) {
+            console.error('❌ /scrapsheet error:', err);
+            const errStr = (err.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ <b>Gagal:</b>\n${errStr}`,
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML' });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // /scrapsheetauto [menit] — start auto schedule
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/scrapsheetauto(?:\s+(\d+))?$/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const { startScrapSheet } = await import('./scraper.js');
+
+        const minutes = parseInt(match[1] || '60', 10);
+        if (minutes < 5) {
+            return bot.sendMessage(chatId, '⚠️ Interval minimum 5 menit.', { parse_mode: 'HTML' });
+        }
+        const intervalMs = minutes * 60 * 1000;
+
+        const loadingMsg = await bot.sendMessage(chatId,
+            `⏳ Mengaktifkan auto-scraping setiap <b>${minutes} menit</b>...\nScraping pertama dimulai sekarang...`,
+            { parse_mode: 'HTML' });
+
+        startScrapSheet(async () => {
+            try {
+                const data = await runScrapSheet();
+                const link = `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}`;
+                const now = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+                // Notify silently on auto runs
+                await bot.sendMessage(chatId,
+                    `🔄 <b>Auto ScrapSheet</b> — ${now}\n` +
+                    `✅ Reguler (Open): ${data.reguler.length} | SQM: ${data.sqm.length} | UNSPEC: ${data.unspec.length}\n` +
+                    `✅ Closed Baru: ${data.closedCount} (Total: ${data.totalClosedCount})\n` +
+                    `🔗 <a href="${link}">Spreadsheet</a>`,
+                    { parse_mode: 'HTML', disable_web_page_preview: true });
+            } catch (err) {
+                console.error('❌ Auto ScrapSheet error:', err.message);
+                const errStr = (err.message || '').slice(0, 1000);
+                await bot.sendMessage(chatId, `⚠️ <b>Auto ScrapSheet error:</b> ${errStr}`, { parse_mode: 'HTML' });
+            }
+        }, intervalMs);
+
+        await bot.editMessageText(
+            `✅ <b>Auto ScrapSheet Aktif!</b>\n\n` +
+            `🕐 Interval: setiap <b>${minutes} menit</b>\n` +
+            `📋 Scraping pertama sedang berjalan...\n\n` +
+            `Gunakan /scrapsheetstop untuk menghentikan.\n` +
+            `Gunakan /scrapsheetstatus untuk melihat status.`,
+            { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML' }
+        );
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // /scrapsheetstop — stop auto schedule
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/scrapsheetstop$/, async (msg) => {
+        const chatId = msg.chat.id;
+        const { stopScrapSheet } = await import('./scraper.js');
+        const stopped = stopScrapSheet();
+        if (stopped) {
+            await bot.sendMessage(chatId,
+                `🛑 <b>Auto ScrapSheet dihentikan.</b>\n\nGunakan /scrapsheetauto untuk mengaktifkan kembali.`,
+                { parse_mode: 'HTML' });
+        } else {
+            await bot.sendMessage(chatId,
+                `ℹ️ Auto ScrapSheet tidak sedang berjalan.\n\nGunakan /scrapsheetauto [menit] untuk mengaktifkan.`,
+                { parse_mode: 'HTML' });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // /scrapsheetstatus — show auto schedule status
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/scrapsheetstatus$/, async (msg) => {
+        const chatId = msg.chat.id;
+        const { getScrapSheetStatus } = await import('./scraper.js');
+        const status = getScrapSheetStatus();
+        const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+        const link = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+
+        if (status.running) {
+            const intervalMins = Math.round(status.intervalMs / 60000);
+            const startedAt = status.startedAt
+                ? status.startedAt.toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })
+                : '-';
+            await bot.sendMessage(chatId,
+                `📡 <b>Auto ScrapSheet Status</b>\n\n` +
+                `🟢 <b>Status:</b> AKTIF\n` +
+                `🕐 <b>Interval:</b> setiap ${intervalMins} menit\n` +
+                `🚀 <b>Dimulai sejak:</b> ${startedAt}\n\n` +
+                `🔗 <a href="${link}">Buka Google Spreadsheet</a>\n\n` +
+                `Gunakan /scrapsheetstop untuk menghentikan.\n` +
+                `Gunakan /scrapsheet untuk trigger manual.`,
+                { parse_mode: 'HTML', disable_web_page_preview: true });
+        } else {
+            await bot.sendMessage(chatId,
+                `📡 <b>Auto ScrapSheet Status</b>\n\n` +
+                `🔴 <b>Status:</b> TIDAK AKTIF\n\n` +
+                `Gunakan /scrapsheetauto [menit] untuk mengaktifkan.\n` +
+                `Gunakan /scrapsheet untuk trigger manual sekali.`,
+                { parse_mode: 'HTML' });
+        }
+    });
+
+
+
     bot.onText(/\/tiketaktif/, async (msg) => {
         const chatId = msg.chat.id;
-        
-        const loadingMsg = await bot.sendMessage(chatId, "Mengambil Data Insera....\nMemproses Data Insera...");
-        
-        setTimeout(async () => {
-            try {
-                await bot.editMessageText("❌ Gagal mengambil data tiket aktif:\nNavigation timeout of 60000 ms exceeded", {
-                    chat_id: chatId,
-                    message_id: loadingMsg.message_id
-                });
-            } catch (e) {}
-        }, 1500);
 
-        /* --- FITUR DIMATIKAN SEMENTARA ---
+        const loadingMsg = await bot.sendMessage(chatId, "Mengambil Data Insera....\nMemproses Data Insera...");
+
+
         try {
             const { getConfig } = await import('./database.js');
             const { scrapeOnce } = await import('./scraper.js');
             const config = getConfig();
-            
-            // Endpoint khusus untuk /tiketaktif sesuai permintaan
-            const activeTicketsUrl = "https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=2026-06-02%2000%3A00&d-5564009-fn_reported_date_filter=2026-06-04%2023%3A00&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CPYT%2CTUB%2CKIJ%2CKMS%2CTER%2CDBS%2CRAI&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=";
-            
-            // Panggil scrapeOnce dengan skipConfigOverrides: true agar tidak tertimpa filter status/workzone dari konfigurasi umum
-            const result = await scrapeOnce(activeTicketsUrl, null, { skipConfigOverrides: true });
-            const activeTickets = (result.data || []).filter(wo => wo.sourceTicket === 'CUSTOMER');
-            
+
+            // Generate dynamic date filters for the last 3 days in WIB timezone
+            const getWIBString = (d) => {
+                const wibTime = new Date(d.getTime() + (d.getTimezoneOffset() * 60000) + (7 * 3600000));
+                const year = wibTime.getFullYear();
+                const month = String(wibTime.getMonth() + 1).padStart(2, '0');
+                const date = String(wibTime.getDate()).padStart(2, '0');
+                return `${year}-${month}-${date}`;
+            };
             const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const dateStr = `${day}/${month}/${year}`;
-            
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            const timeStr = `${hours}:${minutes}:${seconds}`;
-            
+            const dateTo = getWIBString(now) + ' 23:59';
+            const pastDate = new Date();
+            pastDate.setDate(now.getDate() - 2); // 2 days range (e.g. June 29 to July 1)
+            const dateFrom = getWIBString(pastDate) + ' 00:00';
+
+            // Endpoint khusus untuk /tiketaktif sesuai permintaan dengan filter tanggal dinamis, workzone terupdate, dan page size dibatasi ke 30 agar tidak overlimit
+            const activeTicketsUrl = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=30&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(dateTo)}&d-5564009-fn_status_date_filter=&d-5564009-fn_status_date_filter=&d-5564009-fn_C_OWNER_GROUP=TIF%20FBB%20DISTRICT%20SUMBAGTENG%2CTIF%20HD%20DISTRICT%20RIKEP%2CTIF%20ROC-1%2CTIF%20FBB%20ROC%20TERRITORY%201%2CTIF%20AOMQ%20DISTRICT%20RIKEP%2CTIF%20AOMQ%20DISTRICT%20SUMBAGTENG%2CTIF%20FBB%20FFM%20DISTRICT%20RIKEP%2CTIF%20FBB%20FFM%20DISTRICT%20SUMBAGTENG%2CTA%20HD%20WITEL%20RIKEP%2CROC-1%2CROC-1%20FULFILLMENT%2CDTVV%20OTT%2CDTVV%20SA%2CACCESS%20MAINTENANCE%20WITEL%20RIAU%20KEPULAUAN%20(BATAM)%2CIPTV-CCM%2CTIF%20ASR%20FBB%20DISTRICT%20BATAM%2CTIF%20ASR%20FBB%20AREA%201%2CTIF%20ED%20REGIONAL%20SUMBAGTENG&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=CUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CTUB%2CKIJ%2CTER%2CRAI%2CDBS&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=ANALYSIS%2CBACKEND%2CDRAFT%2CFINALCHECK%2CNEW%2CPENDING%2CRESOLVED&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=TECHNICAL&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+
+            // Panggil scrapeOnce dengan skipConfigOverrides: true agar tidak tertimpa filter status/workzone dari konfigurasi umum
+            const resultP1 = await scrapeOnce(activeTicketsUrl, null, { skipConfigOverrides: true });
+            let tickets = resultP1.data || [];
+
+            // Jika jumlah tiket >= 30, kemungkinan besar ada halaman ke-2. Scrap halaman 2.
+            if (tickets.length >= 30) {
+                try {
+                    const activeTicketsUrlP2 = activeTicketsUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
+                    console.log('📄 Page 1 full (30+ tickets), scraping Page 2...');
+                    const resultP2 = await scrapeOnce(activeTicketsUrlP2, null, { skipConfigOverrides: true });
+                    const ticketsP2 = resultP2.data || [];
+                    console.log(`📄 Found ${ticketsP2.length} tickets on Page 2`);
+                    tickets = [...tickets, ...ticketsP2];
+                } catch (p2Err) {
+                    console.error('⚠️ Failed to scrape page 2:', p2Err.message);
+                }
+            }
+
+            // Filter duplikat (menggunakan Set untuk orderId) dan saring hanya sourceTicket === CUSTOMER
+            const seenIds = new Set();
+            const activeTickets = [];
+            for (const wo of tickets) {
+                if (!seenIds.has(wo.orderId)) {
+                    seenIds.add(wo.orderId);
+                    if (wo.sourceTicket === 'CUSTOMER') {
+                        activeTickets.push(wo);
+                    }
+                }
+            }
+
+            // Format dates based on WIB timezone to prevent server timezone mismatch
+            const formatToWIB = (d) => {
+                const wibTime = new Date(d.getTime() + (7 * 3600000));
+                const year = wibTime.getUTCFullYear();
+                const month = String(wibTime.getUTCMonth() + 1).padStart(2, '0');
+                const date = String(wibTime.getUTCDate()).padStart(2, '0');
+                const hours = String(wibTime.getUTCHours()).padStart(2, '0');
+                const minutes = String(wibTime.getUTCMinutes()).padStart(2, '0');
+                const seconds = String(wibTime.getUTCSeconds()).padStart(2, '0');
+                return `${year}-${month}-${date} ${hours}:${minutes}:${seconds}`;
+            };
+            const nowWibStr = formatToWIB(new Date()); 
+            const [wibDate, wibTime] = nowWibStr.split(' ');
+            const [wYear, wMonth, wDay] = wibDate.split('-');
+            const dateStr = `${wDay}/${wMonth}/${wYear}`;
+            const timeStr = wibTime;
+ 
             let message = `TIKET REGULER AKTIF ${dateStr}\nLAST UPDATE ${dateStr} ${timeStr}\n\n`;
             
-            if (activeTickets.length === 0) {
-                message += "Tidak ada tiket reguler aktif saat ini.\n\n";
-            } else {
-                activeTickets.forEach((wo, index) => {
-                    const ttr = wo.ttrCustomer || '-';
-                    const wz = wo.workzone || '-';
-                    const tier = wo.customerType || 'REGULER';
-                    message += `${index + 1}. ${wo.orderId}  ${ttr}  ${wz}  ${tier}\n`;
-                    if (wo.bookingDate) {
-                        message += `BOOKING DATE : ${wo.bookingDate}\n`;
-                    }
-                    if (wo.deviceName && wo.deviceName !== '-') {
-                        message += `ODP : ${wo.deviceName}\n`;
-                    }
-                    if (wo.rkInformation && wo.rkInformation !== '-') {
-                        message += `ODC : ${wo.rkInformation}\n`;
-                    }
-                    message += '\n';
-                });
-            }
+            // Build the block content
+            let blockContent = '';
             
-            message += "----------------------------------------\n\n";
-            message += "silahkan /info INCXXX untuk melihat Summary Ticket nya, Terimakasih";
-            
-            await bot.editMessageText(message, {
-                chat_id: chatId,
-                message_id: loadingMsg.message_id
+            // Group activeTickets by workzone
+            const groups = {};
+            activeTickets.forEach(wo => {
+                const wz = wo.workzone || 'UNKNOWN';
+                if (!groups[wz]) groups[wz] = [];
+                groups[wz].push(wo);
             });
             
+            // Sort workzones alphabetically
+            const sortedWzs = Object.keys(groups).sort();
+            
+            if (activeTickets.length === 0) {
+                blockContent += "Tidak ada tiket reguler aktif saat ini.\n";
+            } else {
+                sortedWzs.forEach((wz, groupIndex) => {
+                    const ticketsInWz = groups[wz];
+                    if (groupIndex > 0) {
+                        blockContent += '\n'; // Extra spacing before subsequent workzones
+                    }
+                    blockContent += `=== ${wz} (${ticketsInWz.length} Ticket) ===\n`;
+                    
+                    ticketsInWz.forEach((wo, index) => {
+                        const ttr = wo.ttrCustomer || '-';
+                        const tier = wo.customerType || 'REGULER';
+                        
+                        const tags = [];
+                        const summaryLower = (wo.summary || '').toLowerCase();
+                        if (summaryLower.includes('non ffg') || summaryLower.includes('non_ffg')) {
+                            tags.push('NON_FFG');
+                        } else if (summaryLower.includes('ffg')) {
+                            tags.push('FFG');
+                        }
+                        
+                        if (summaryLower.includes('non manja') || summaryLower.includes('non_manja')) {
+                            tags.push('NON_MANJA');
+                        } else if (summaryLower.includes('manja')) {
+                            tags.push('MANJA');
+                        }
+                        
+                        let line = `${wo.orderId} | ${ttr} | ${tier} | ${wz}`;
+                        if (tags.length > 0) {
+                            line += ` | ${tags.join(' | ')}`;
+                        }
+                        blockContent += `${line}\n`;
+                        
+                        const odp = (wo.deviceName && wo.deviceName !== '-') ? wo.deviceName : '';
+                        const odc = (wo.rkInformation && wo.rkInformation !== '-') ? wo.rkInformation : '';
+                        blockContent += `ODP: ${odp}\n`;
+                        blockContent += `ODC: ${odc}\n`;
+                        
+                        // Add empty line between tickets, except after the last ticket of the last group
+                        if (index < ticketsInWz.length - 1 || groupIndex < sortedWzs.length - 1) {
+                            blockContent += '\n';
+                        }
+                    });
+                });
+            }
+ 
+            // Escape HTML helper just in case
+            const escapeHtml = (str) => {
+                return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            };
+ 
+            // Wrap the block content inside pre and code tag with class language-go
+            message += `<pre><code class="language-go">${escapeHtml(blockContent)}</code></pre>\n\n`;
+            message += "silahkan /info INCXXX untuk melihat Summary Ticket nya, Terimakasih";
+ 
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: loadingMsg.message_id,
+                parse_mode: 'HTML'
+            });
+
         } catch (error) {
-            await bot.editMessageText(`❌ Gagal mengambil data tiket aktif:\n${error.message}`, {
+            const errMsg = (error.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ Gagal mengambil data tiket aktif:\n${errMsg}`, {
                 chat_id: chatId,
                 message_id: loadingMsg.message_id
             });
         }
-        ----------------------------------- */
     });
 
     // Handle /jadwal command
