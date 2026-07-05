@@ -857,7 +857,9 @@ async function getScrapePage() {
                 '--disable-widevine-cdm',
                 '--disable-component-update',
                 '--disable-bundled-ppapi-plugins',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--no-zygote',
+                '--js-flags="--max-old-space-size=256"'
             ],
             defaultViewport: {
                 width: 1280,
@@ -890,6 +892,8 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
     }
     isScrapingNow = true;
+    let scrapePage = null;
+    let shouldCloseTab = false;
     try {
         // --- CONSTRUCT URL WITH FILTERS ---
         // 1. Get filter config
@@ -1012,9 +1016,8 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
 
         const { page, isShared } = await getScrapePage();
 
-        // If using shared browser, create a new tab for scraping
-        let scrapePage = page;
-        let shouldCloseTab = false;
+        scrapePage = page;
+        shouldCloseTab = !isShared;
 
         if (isShared) {
             // Use the same page but save current URL
@@ -1152,6 +1155,10 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         throw error;
     } finally {
         isScrapingNow = false;
+        if (shouldCloseTab && scrapePage) {
+            console.log('♻️ Closing temporary tab for scrapeOnce...');
+            await scrapePage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
     }
 }
 

@@ -28,8 +28,9 @@ export async function launchBrowser(url = 'about:blank') {
     try {
         console.log('🚀 Launching browser...');
 
+        const isHeadless = process.env.NODE_ENV === 'production' || process.platform === 'linux';
         browser = await puppeteer.launch({
-            headless: false, // Show browser window for debugging (can be changed to 'new' for headless)
+            headless: isHeadless ? 'shell' : false, // Run headless in production/linux to save RAM
             userDataDir: userDataDir, // Persist session/cookies
             args: [
                 '--no-sandbox',
@@ -37,6 +38,12 @@ export async function launchBrowser(url = 'about:blank') {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
+                '--disable-features=Vulkan',
+                '--disable-gpu-sandbox',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--no-zygote',
+                '--js-flags="--max-old-space-size=256"',
                 '--window-size=1280,800'
             ],
             defaultViewport: {
