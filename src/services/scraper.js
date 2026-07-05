@@ -188,9 +188,9 @@ function parseWorkOrders(html, options = {}) {
                 if (text.includes('workzone')) columnMap.workzone = i;
                 if (text.includes('witel')) columnMap.witel = i;
                 if (text.includes('status')) columnMap.status = i;
-                if (text.includes('reported') && text.includes('by')) columnMap.reportedBy = i;
-                if (text.includes('reported') && !text.includes('by')) columnMap.reportedDate = i;
-                if (text.includes('source') && text.includes('ticket')) columnMap.sourceTicket = i;
+                if ((text.includes('reported') && text.includes('by')) || (text.includes('dilaporkan') && text.includes('oleh')) || text === 'oleh') columnMap.reportedBy = i;
+                if ((text.includes('reported') && !text.includes('by')) || (text.includes('tgl') && text.includes('lapor')) || (text.includes('tanggal') && text.includes('lapor'))) columnMap.reportedDate = i;
+                if ((text.includes('source') && text.includes('ticket')) || (text.includes('sumber') && text.includes('tiket')) || text === 'sumber' || text === 'source') columnMap.sourceTicket = i;
                 if (text.includes('device') && text.includes('name')) columnMap.deviceName = i;
                 if (text.includes('rk') && text.includes('information')) columnMap.rkInformation = i;
                 if (text.includes('lapul')) columnMap.lapul = i;
@@ -359,21 +359,31 @@ function parseWorkOrders(html, options = {}) {
             const cell = cells[i];
             if (!cell) continue;
  
+            const cellUpper = cell.toUpperCase();
+
             // Customer type pattern
             if (cell.match(/^(HVC_?(PLATINUM|DIAMOND|GOLD)|REGULER)$/i)) {
-                customerType = cell.toUpperCase().replace(/[-\s]/g, '_');
+                customerType = cellUpper.replace(/[-\s]/g, '_');
             }
             // Status pattern
             if (cell.match(/^(OPEN|IN_PROGRESS|BACKEND|CLOSED|RESOLVED|CANCELLED)$/i)) {
-                status = cell.toUpperCase();
+                status = cellUpper;
             }
             // Customer segment pattern (like PL-TSEL, DGS, ENTERPRISE, PERSONAL, PEMERINTAH, etc.)
             if (cell.match(/^(PL-TSEL|DGS|DBS|DES|DSS|DPS|ENTERPRISE|PERSONAL|PEMERINTAH|WHOLESALE|BUSINESS|CONSUMER|GOVERNMENT|SOE|MEDIUM|SMALL)$/i)) {
-                customerSegment = cell.toUpperCase();
+                customerSegment = cellUpper;
             }
             // Fallback for source ticket if not found by column map
-            if (sourceTicket === 'UNKNOWN' && cell.match(/^(CUSTOMER|PROACTIVE|GAMAS|SQM)$/i)) {
-                sourceTicket = cell.toUpperCase();
+            if (sourceTicket === 'UNKNOWN') {
+                if (cellUpper === 'CUSTOMER' || cellUpper.includes('PROACTIVE') || cellUpper.includes('SQM') || cellUpper.includes('GAMAS')) {
+                    sourceTicket = cellUpper;
+                }
+            }
+            // Fallback for reportedBy
+            if (!reportedBy) {
+                if (cellUpper.includes('PROACTIVE_TICKET') || cellUpper.includes('PROACTIVE_OHI')) {
+                    reportedBy = cell.trim();
+                }
             }
             // Service number pattern (e.g. 12-digit number starting with 1, 2, or 3)
             if (!serviceNo && cell.match(/^(111|12|13|14|15|16|17|18|19)\d{9}$/)) {
@@ -1493,13 +1503,15 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
         const sqmTickets = finalProactive.filter(wo => {
             const repBy = (wo.reportedBy || '').toUpperCase();
             const src = (wo.sourceTicket || '').toUpperCase();
-            return repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET');
+            const sum = (wo.summary || '').toUpperCase();
+            return repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET') || sum.includes('SQM');
         });
 
         const unspecTickets = finalProactive.filter(wo => {
             const repBy = (wo.reportedBy || '').toUpperCase();
             const src = (wo.sourceTicket || '').toUpperCase();
-            return repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI');
+            const sum = (wo.summary || '').toUpperCase();
+            return repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI') || sum.includes('UNSPEC') || sum.includes('OHI');
         });
 
         console.log(`✅ [Scraper] Scraped summary: Reguler=${finalReguler.length}, SQM=${sqmTickets.length}, UNSPEC=${unspecTickets.length}`);
