@@ -184,59 +184,24 @@ export async function pressKey(key) {
 }
 
 /**
- * Get single screenshot
+ * Get single screenshot (Disabled to save CPU)
  */
 export async function getScreenshot() {
-    if (!page) {
-        return null;
-    }
-
-    try {
-        const screenshot = await page.screenshot({
-            encoding: 'base64',
-            type: 'jpeg',
-            quality: 70
-        });
-        return screenshot;
-    } catch (error) {
-        console.error('Screenshot error:', error.message);
-        return null;
-    }
+    return null;
 }
 
 /**
- * Start screenshot streaming to WebSocket clients
+ * Start screenshot streaming (Disabled)
  */
 function startScreenshotStream() {
-    if (screenshotInterval) return;
-
-    screenshotInterval = setInterval(async () => {
-        if (!page || wsClients.size === 0) return;
-
-        try {
-            const screenshot = await getScreenshot();
-            if (screenshot) {
-                const message = JSON.stringify({ type: 'screenshot', data: screenshot });
-                wsClients.forEach(client => {
-                    if (client.readyState === 1) { // WebSocket.OPEN
-                        client.send(message);
-                    }
-                });
-            }
-        } catch (error) {
-            // Ignore screenshot errors during streaming
-        }
-    }, 300); // Stream every 300ms
+    // Disabled to save CPU
 }
 
 /**
- * Stop screenshot streaming
+ * Stop screenshot streaming (Disabled)
  */
 function stopScreenshotStream() {
-    if (screenshotInterval) {
-        clearInterval(screenshotInterval);
-        screenshotInterval = null;
-    }
+    // Disabled to save CPU
 }
 
 /**
