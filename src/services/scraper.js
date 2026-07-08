@@ -787,6 +787,14 @@ async function getScrapePage() {
         try {
             const newPage = await monitorBrowser.newPage();
             await newPage.setViewport({ width: 1366, height: 768 });
+            await newPage.setRequestInterception(true);
+            newPage.on('request', (req) => {
+                if (['image', 'font', 'media'].includes(req.resourceType())) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
             return { page: newPage, isShared: false };
         } catch (e) {
             console.log('⚠️ Failed to open new tab in browser monitor, falling back to shared page:', e.message);
@@ -881,6 +889,14 @@ async function getScrapePage() {
 
     // Always create a new tab in ownBrowser so that it can be closed by the caller safely!
     const newPage = await ownBrowser.newPage();
+    await newPage.setRequestInterception(true);
+    newPage.on('request', (req) => {
+        if (['image', 'font', 'media'].includes(req.resourceType())) {
+            req.abort();
+        } else {
+            req.continue();
+        }
+    });
     return { page: newPage, isShared: false };
 }
 
@@ -1168,6 +1184,10 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         if (shouldCloseTab && scrapePage) {
             console.log('♻️ Closing temporary tab for scrapeOnce...');
             await scrapePage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
+        if (ownBrowser) {
+            console.log('♻️ Closing headless browser for scrapeOnce to free VPS RAM...');
+            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
         }
     }
 }
@@ -1526,6 +1546,10 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             console.log('♻️ Closing temporary tab for proactive & reguler...');
             await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
         }
+        if (ownBrowser) {
+            console.log('♻️ Closing headless browser for proactive & reguler to free VPS RAM...');
+            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
+        }
     }
 }
 
@@ -1564,6 +1588,10 @@ export async function scrapeClosedTickets(closedUrl) {
         if (scrapedPage && !isPageShared) {
             console.log('♻️ Closing temporary tab for closed tickets...');
             await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+        }
+        if (ownBrowser) {
+            console.log('♻️ Closing headless browser for closed tickets to free VPS RAM...');
+            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
         }
     }
 }

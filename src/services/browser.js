@@ -53,6 +53,14 @@ export async function launchBrowser(url = 'about:blank') {
         });
 
         page = await browser.newPage();
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'font', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
 
         // Navigate to URL if provided
         if (url && url !== 'about:blank') {
