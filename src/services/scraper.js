@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import { getBrowserInstance, getPageInstance, getUserDataDir } from './browser.js';
@@ -21,6 +22,43 @@ async function safeGoto(page, url, timeout = 60000) {
     } catch (e) {
         console.log(`⚠️ [Scraper] safeGoto warning: ${e.message} for ${url}. Proceeding...`);
     }
+}
+
+const getCookiesPath = () => {
+    try {
+        return path.join(getUserDataDir(), 'saved_cookies.json');
+    } catch (e) {
+        return './saved_cookies.json';
+    }
+};
+
+export async function saveCookies(page) {
+    try {
+        const cookies = await page.cookies();
+        const cookiesPath = getCookiesPath();
+        fs.writeFileSync(cookiesPath, JSON.stringify(cookies, null, 2));
+        console.log(`💾 Saved ${cookies.length} cookies to local storage`);
+    } catch (err) {
+        console.error('❌ Failed to save cookies:', err.message);
+    }
+}
+
+export async function restoreCookies(page) {
+    try {
+        const cookiesPath = getCookiesPath();
+        if (fs.existsSync(cookiesPath)) {
+            const cookiesStr = fs.readFileSync(cookiesPath, 'utf8');
+            const cookies = JSON.parse(cookiesStr);
+            if (cookies && cookies.length > 0) {
+                await page.setCookie(...cookies);
+                console.log(`🔌 Restored ${cookies.length} cookies from local storage`);
+                return true;
+            }
+        }
+    } catch (err) {
+        console.error('❌ Failed to restore cookies:', err.message);
+    }
+    return false;
 }
 
 /**
@@ -787,6 +825,7 @@ async function getScrapePage() {
         try {
             const newPage = await monitorBrowser.newPage();
             await newPage.setViewport({ width: 1366, height: 768 });
+            await restoreCookies(newPage).catch(() => {});
             await newPage.setRequestInterception(true);
             newPage.on('request', (req) => {
                 if (['image', 'font', 'media'].includes(req.resourceType())) {
@@ -889,6 +928,7 @@ async function getScrapePage() {
 
     // Always create a new tab in ownBrowser so that it can be closed by the caller safely!
     const newPage = await ownBrowser.newPage();
+    await restoreCookies(newPage).catch(() => {});
     await newPage.setRequestInterception(true);
     newPage.on('request', (req) => {
         if (['image', 'font', 'media'].includes(req.resourceType())) {
@@ -1181,6 +1221,9 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         throw error;
     } finally {
         isScrapingNow = false;
+        if (scrapePage) {
+            await saveCookies(scrapePage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
+        }
         if (shouldCloseTab && scrapePage) {
             console.log('♻️ Closing temporary tab for scrapeOnce...');
             await scrapePage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
@@ -1542,6 +1585,9 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
         };
 
     } finally {
+        if (scrapedPage) {
+            await saveCookies(scrapedPage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
+        }
         if (scrapedPage && !isPageShared) {
             console.log('♻️ Closing temporary tab for proactive & reguler...');
             await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
@@ -1585,6 +1631,9 @@ export async function scrapeClosedTickets(closedUrl) {
         console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
         throw err;
     } finally {
+        if (scrapedPage) {
+            await saveCookies(scrapedPage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
+        }
         if (scrapedPage && !isPageShared) {
             console.log('♻️ Closing temporary tab for closed tickets...');
             await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
