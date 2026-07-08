@@ -5,7 +5,7 @@ import { registerTangibleHandler } from './handle_tangible.js';
 import { registerMtcHandler } from './handle_mtc.js';
 import { registerDatekHandler } from './handle_datek.js';
 import { registerPsbInputHandler, registerPsbRekapHandler } from './handle_psb.js';
-import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkOrdersByServiceNo, getWorkersForDate, updateRekap, getConfig } from './database.js';
+import { upsertTelegramChat, upsertGroupMember, getPerformanceStats, getPerformanceConfig, getWorkOrderByOrderId, getWorkOrdersByServiceNo, getWorkersForDate, updateRekap, getConfig, saveConfig } from './database.js';
 import { askAI } from './ai.js';
 import { formatToWIB, getWIBDay, getWIBMonth, getWIBYear } from '../utils/time.js';
 
@@ -766,6 +766,43 @@ Chat ID: <code>${chatId}</code>
                 message_id: loadingMsg.message_id
             });
         }
+    });
+
+    // Handle Workzone manual tagging configuration
+    // TUB, TPI, KMS, KIJ, DBS, TER, RAI
+    const TARGET_WORKZONES = ["TUB", "TPI", "KMS", "KIJ", "DBS", "TER", "RAI"];
+    
+    TARGET_WORKZONES.forEach(wz => {
+        // Command format: /TPI @username1,@username2,...
+        const setReg = new RegExp(`^\\/${wz}(?:\\s+(.+))?$`, 'i');
+        bot.onText(setReg, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const text = match[1] ? match[1].trim() : '';
+
+            if (!text) {
+                const current = getConfig()[`tag_${wz}`] || 'Belum ada';
+                return bot.sendMessage(chatId, `ℹ️ <b>Cara Penggunaan:</b>\nKetik <code>/${wz} @username1,@username2</code>\n\nTag saat ini: <code>${current}</code>`, { parse_mode: 'HTML' });
+            }
+
+            // Extract usernames starting with @
+            const usernames = text.match(/@[a-zA-Z0-9_]+/g);
+            if (!usernames || usernames.length === 0) {
+                return bot.sendMessage(chatId, `❌ Username tidak valid. Gunakan format: <code>/${wz} @username1, @username2</code>`, { parse_mode: 'HTML' });
+            }
+
+            const formattedTags = usernames.join(' ');
+            saveConfig(`tag_${wz}`, formattedTags);
+
+            await bot.sendMessage(chatId, `✅ <b>Berhasil menyimpan tag untuk ${wz}:</b>\n${formattedTags}`, { parse_mode: 'HTML' });
+        });
+
+        // Command format: /listTPI
+        const listReg = new RegExp(`^\\/list${wz}$`, 'i');
+        bot.onText(listReg, async (msg) => {
+            const chatId = msg.chat.id;
+            const current = getConfig()[`tag_${wz}`] || 'Belum ada teknisi';
+            await bot.sendMessage(chatId, `📋 <b>Daftar Tag ${wz}:</b>\n${current}`, { parse_mode: 'HTML' });
+        });
     });
 
     // Handle /jadwal command

@@ -391,39 +391,48 @@ export async function sendWorkOrderWithRotation(workOrder) {
         return false;
     }
 
-    const workers = getWorkersToTag(workzone);
-    console.log(`Debug Auto-Send: Found ${workers.length} workers for ${workzone}: ${workers.map(w => w.member_name).join(', ')}`);
+    const wzUpper = workzone.toUpperCase();
+    const manualTags = config[`tag_${wzUpper}`] || '';
 
-    if (workers.length === 0) {
-        console.log(`Debug Auto-Send: No eligible workers for ${workzone}, sending without tags`);
-    }
+    let tags = '';
+    if (manualTags) {
+        tags = manualTags;
+        console.log(`📤 Auto-send WO ${orderId} to ${workzone} using manual tags: ${tags}`);
+    } else {
+        const workers = getWorkersToTag(workzone);
+        console.log(`Debug Auto-Send: Found ${workers.length} workers for ${workzone}: ${workers.map(w => w.member_name).join(', ')}`);
 
-    let rotationIndex = 0;
-    const selected = [];
-
-    if (workers.length > 0) {
-        rotationIndex = getRotationIndex(workzone);
-        if (rotationIndex >= workers.length) rotationIndex = 0;
-
-        const tagsCount = 2;
-        for (let i = 0; i < tagsCount && i < workers.length; i++) {
-            selected.push(workers[(rotationIndex + i) % workers.length]);
+        if (workers.length === 0) {
+            console.log(`Debug Auto-Send: No eligible workers for ${workzone}, sending without tags`);
         }
 
-        updateRotationIndex(workzone, (rotationIndex + tagsCount) % workers.length);
+        let rotationIndex = 0;
+        const selected = [];
+
+        if (workers.length > 0) {
+            rotationIndex = getRotationIndex(workzone);
+            if (rotationIndex >= workers.length) rotationIndex = 0;
+
+            const tagsCount = 2;
+            for (let i = 0; i < tagsCount && i < workers.length; i++) {
+                selected.push(workers[(rotationIndex + i) % workers.length]);
+            }
+
+            updateRotationIndex(workzone, (rotationIndex + tagsCount) % workers.length);
+        }
+
+        tags = selected
+            .filter(w => w.telegram_username)
+            .map(w => {
+                let u = w.telegram_username;
+                if (!u.startsWith('@')) u = '@' + u;
+                return u;
+            })
+            .join(' ');
+
+        const tagNames = selected.map(w => w.member_name || w.excel_name).join(', ');
+        console.log(`📤 Auto-send WO ${workOrder.order_id || workOrder.orderId} to ${workzone}: ${tagNames}`);
     }
-
-    const tags = selected
-        .filter(w => w.telegram_username)
-        .map(w => {
-            let u = w.telegram_username;
-            if (!u.startsWith('@')) u = '@' + u;
-            return u;
-        })
-        .join(' ');
-
-    const tagNames = selected.map(w => w.member_name || w.excel_name).join(', ');
-    console.log(`📤 Auto-send WO ${workOrder.order_id || workOrder.orderId} to ${workzone}: ${tagNames}`);
 
     try {
         await sendWorkOrderNotification(chatId, workOrder, tags);
