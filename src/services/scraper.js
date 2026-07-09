@@ -1438,6 +1438,10 @@ export async function scrapeSingleTicket(orderId) {
             console.log('♻️ Closing temporary tab for manual scrape...');
             await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
         }
+        if (ownBrowser) {
+            console.log('♻️ Closing headless browser for manual scrape to free VPS RAM...');
+            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
+        }
     }
 }
 

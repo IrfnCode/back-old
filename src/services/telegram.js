@@ -507,6 +507,81 @@ Chat ID: <code>${chatId}</code>
     });
 
     // ─────────────────────────────────────────────────────────────
+    // /scraptiketclose [start_date]-[end_date]
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/scraptiketclose(?:\s+(.+))?$/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const input = match[1] ? match[1].trim() : '';
+
+        // Expect input like DD/MM/YYYY-DD/MM/YYYY
+        const dateRegex = /^(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})$/;
+        const parsed = input.match(dateRegex);
+
+        if (!parsed) {
+            return bot.sendMessage(chatId, 'ℹ️ <b>Cara Penggunaan:</b>\nKetik <code>/scraptiketclose DD/MM/YYYY-DD/MM/YYYY</code>\nContoh: <code>/scraptiketclose 01/07/2026-03/07/2026</code>', { parse_mode: 'HTML' });
+        }
+
+        const startDateStr = parsed[1];
+        const endDateStr = parsed[2];
+
+        // Format DD/MM/YYYY to YYYY-MM-DD
+        const formatDate = (str) => {
+            const [d, m, y] = str.split('/');
+            return `${y}-${m}-${d}`;
+        };
+
+        const repFrom = formatDate(startDateStr) + ' 00:00';
+        const repTo = formatDate(endDateStr) + ' 23:59';
+        const statFrom = repFrom;
+        const statTo = repTo;
+
+        const loadingMsg = await bot.sendMessage(chatId, `⏳ Scraping TIKET CLOSE dari <b>${startDateStr}</b> sampai <b>${endDateStr}</b>...`, { parse_mode: 'HTML' });
+
+        try {
+            const { exportClosedToSpreadsheet } = await import('./gdocs.js');
+            const { scrapeClosedTickets } = await import('./scraper.js');
+
+            const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+            const closedSheetName = 'TIKET CLOSE';
+
+            const closedUrl1 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=100&d-5564009-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-5564009-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-5564009-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-5564009-fn_status_date_filter=${encodeURIComponent(statTo)}&d-5564009-fn_C_OWNER_GROUP=&d-5564009-fn_C_OWNER=&d-5564009-fn_C_REPORTED_PRIORITY=&d-5564009-fn_C_SOURCE_TICKET=PROACTIVE%2CCUSTOMER&d-5564009-fn_C_EXTERNAL_TICKETID=&d-5564009-fn_C_CHANNEL=&d-5564009-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-5564009-fn_C_CUSTOMER_TYPE=&d-5564009-fn_C_SERVICE_NO=&d-5564009-fn_C_SERVICE_TYPE=&d-5564009-fn_C_SERVICE_ID=&d-5564009-fn_C_SLG=&d-5564009-fn_C_KODE_PRODUK=&d-5564009-fn_DATEMODIFIED=&d-5564009-fn_C_CLOSED_BY=&d-5564009-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-5564009-fn_C_WITEL=&d-5564009-fn_C_REGION=&d-5564009-fn_C_ID_TICKET=&d-5564009-fn_C_ACTUAL_SOLUTION=&d-5564009-fn_C_CLASSIFICATION_PATH=&d-5564009-fn_C_INCIDENT_DOMAIN=&d-5564009-fn_C_TICKET_STATUS=CLOSE%2CCLOSED%2CFINALCHECK%2CMEDIACARE%2CSALAMSIM&d-5564009-fn_C_PERANGKAT=&d-5564009-fn_C_DESCRIPTION_ASSIGMENT=&d-5564009-fn_C_CLASSIFICATION_CATEGORY=&d-5564009-fn_C_REALM=&d-5564009-fn_C_PIPE_NAME=&d-5564009-fn_C_CUSTOMER_ID=&d-5564009-fn_C_RELATED_TO_GAMAS=&d-5564009-fn_C_TICKET_ID_GAMAS=&d-5564009-fn_C_GUARANTE_STATUS=&d-5564009-fn_C_DESCRIPTION_CUSTOMERID=&d-5564009-fn_C_CONTACT_NAME=`;
+
+            const closedUrl2 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
+
+            const closedTickets1 = await scrapeClosedTickets(closedUrl1);
+            const closedTickets2 = await scrapeClosedTickets(closedUrl2);
+
+            const seenClosedIds = new Set();
+            const combinedClosedData = [];
+            [...closedTickets1, ...closedTickets2].forEach(wo => {
+                const inc = wo.orderId || wo.order_id;
+                if (inc && inc.match(/^INC\d+$/) && !seenClosedIds.has(inc)) {
+                    seenClosedIds.add(inc);
+                    combinedClosedData.push(wo);
+                }
+            });
+
+            const exportClosedRes = await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, combinedClosedData);
+
+            const link = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+            await bot.editMessageText(
+                `📊 <b>Scrap Tiket Close Sukses!</b>\n\n` +
+                `📅 <b>Periode:</b> ${startDateStr} - ${endDateStr}\n` +
+                `✅ <b>Closed Ditemukan (Rentang Waktu):</b> ${combinedClosedData.length} tiket\n` +
+                `✅ <b>Total di Sheet:</b> ${exportClosedRes.totalClosedCount || exportClosedRes.count || 'N/A'}\n\n` +
+                `📝 Sheet: <b>TIKET CLOSE</b>\n` +
+                `🔗 <a href="${link}">Buka Google Spreadsheet</a>`,
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML', disable_web_page_preview: true }
+            );
+        } catch (err) {
+            console.error('❌ /scraptiketclose error:', err);
+            const errStr = (err.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ <b>Gagal Scrap Tiket Close:</b>\n${errStr}`,
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'HTML' });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────
     // /scrapsheetauto [menit] — start auto schedule
     // ─────────────────────────────────────────────────────────────
     bot.onText(/^\/scrapsheetauto(?:\s+(\d+))?$/, async (msg, match) => {

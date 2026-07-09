@@ -2112,3 +2112,25 @@ server.listen(PORT, '0.0.0.0', () => {
   }, 1 * 60 * 1000); // 1 minute
   console.log('🔄 Datek external reverse sync scheduled (every 1 minute)');
 });
+
+// Graceful shutdown handling untuk mencegah zombie process chrome
+const gracefulShutdown = async (signal) => {
+  console.log(`\n🛑 Received ${signal}. Cleaning up headless browsers...`);
+  try {
+    await stopScraping();
+  } catch (e) {
+    console.error('Error closing scraper browser:', e.message);
+  }
+  
+  try {
+    await closeBrowser();
+  } catch (e) {
+    console.error('Error closing main browser:', e.message);
+  }
+  
+  console.log('✅ Cleanup complete. Exiting.');
+  process.exit(0);
+};
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
