@@ -1315,15 +1315,24 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         try {
             const response = await sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `${sheetName}!A:P`
+                range: `${sheetName}!A:Q`
             });
             existingRows = response.data.values || [];
         } catch (e) {
             console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
         }
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET', 'REPORTED BY'];
-        const colWidth = headers.length; // 16
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET', 'REPORTED BY', 'TIPE TIKET'];
+        const colWidth = headers.length; // 17
+
+        const calculateTicketType = (reportedBy, sourceTicket, summary) => {
+            const repBy = (reportedBy || '').toUpperCase();
+            const src = (sourceTicket || '').toUpperCase();
+            const sum = (summary || '').toUpperCase();
+            if (repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET') || sum.includes('SQM')) return 'SQM';
+            if (repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI') || sum.includes('UNSPEC') || sum.includes('OHI')) return 'UNSPEC';
+            return 'REGULER';
+        };
 
         // Keep track of INC numbers already present in the sheet
         const seenIncs = new Set();
@@ -1363,11 +1372,17 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                             }
                         }
                         
-                        // Ensure exactly 16 columns
-                        while (formattedRow.length < 16) {
+                        // Ensure exactly 17 columns
+                        while (formattedRow.length < 17) {
                             formattedRow.push('-');
                         }
-                        formattedRow = formattedRow.slice(0, 16);
+                        
+                        // Backfill TIPE TIKET if missing or '-'
+                        if (!formattedRow[16] || formattedRow[16] === '-') {
+                            formattedRow[16] = calculateTicketType(formattedRow[15], formattedRow[14], formattedRow[13]);
+                        }
+                        
+                        formattedRow = formattedRow.slice(0, 17);
                         
                         existingData.push(formattedRow);
                     }
@@ -1396,6 +1411,8 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     const summaryVal = wo.summary || wo.description || '-';
                     const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
 
+                    const ticketType = calculateTicketType(reportedBy, srcTicket, summaryVal);
+
                     existingData.push([
                         '', // placeholder for index
                         orderId,
@@ -1412,15 +1429,20 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                         technician,
                         summaryVal,
                         srcTicket,
-                        reportedBy
+                        reportedBy,
+                        ticketType
                     ]);
                     seenIncs.add(orderId);
                 } else {
-                    // Update existing row if REPORTED BY is missing
-                    if (reportedBy && reportedBy !== '-') {
-                        const existingRow = existingData.find(row => row[1] === orderId);
-                        if (existingRow && (!existingRow[15] || existingRow[15] === '-')) {
+                    // Update existing row if REPORTED BY or TIPE TIKET is missing
+                    const existingRow = existingData.find(row => row[1] === orderId);
+                    if (existingRow) {
+                        if (reportedBy && reportedBy !== '-' && (!existingRow[15] || existingRow[15] === '-')) {
                             existingRow[15] = reportedBy;
+                        }
+                        // Also update type just in case we have better info now
+                        if (!existingRow[16] || existingRow[16] === '-') {
+                            existingRow[16] = calculateTicketType(existingRow[15], existingRow[14], existingRow[13]);
                         }
                     }
                 }
