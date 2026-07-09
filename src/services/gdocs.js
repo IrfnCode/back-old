@@ -1315,15 +1315,15 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
         try {
             const response = await sheets.spreadsheets.values.get({
                 spreadsheetId,
-                range: `${sheetName}!A:O`
+                range: `${sheetName}!A:P`
             });
             existingRows = response.data.values || [];
         } catch (e) {
             console.log(`Note: Could not read existing values from sheet ${sheetName}, starting fresh`);
         }
 
-        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET'];
-        const colWidth = headers.length; // 15
+        const headers = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'REPORTED DATE', 'RESOLVE DATE', 'DESCRIPTION ACTUAL SOLUTION', 'TECHNICIAN', 'SUMMARY', 'SOURCE TICKET', 'REPORTED BY'];
+        const colWidth = headers.length; // 16
 
         // Keep track of INC numbers already present in the sheet
         const seenIncs = new Set();
@@ -1363,11 +1363,11 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                             }
                         }
                         
-                        // Ensure exactly 15 columns
-                        while (formattedRow.length < 15) {
+                        // Ensure exactly 16 columns
+                        while (formattedRow.length < 16) {
                             formattedRow.push('-');
                         }
-                        formattedRow = formattedRow.slice(0, 15);
+                        formattedRow = formattedRow.slice(0, 16);
                         
                         existingData.push(formattedRow);
                     }
@@ -1392,6 +1392,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                 const technician = wo.technician || '-';
                 const summaryVal = wo.summary || wo.description || '-';
                 const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
+                const reportedBy = wo.reportedBy || wo.reported_by || '-';
 
                 existingData.push([
                     '', // placeholder for index
@@ -1408,7 +1409,8 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     actualSolution,
                     technician,
                     summaryVal,
-                    srcTicket
+                    srcTicket,
+                    reportedBy
                 ]);
                 seenIncs.add(orderId);
             }
