@@ -1375,44 +1375,55 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             }
         }
 
-        // Append only new closed tickets
+        // Append only new closed tickets OR update existing REPORTED BY
         newClosedTickets.forEach(wo => {
             const orderId = wo.orderId || wo.order_id || '-';
-            if (orderId && orderId.match(/^INC\d+$/) && !seenIncs.has(orderId)) {
-                const serviceNo = wo.serviceNo || wo.service_no || '-';
-                const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
-                const custType = wo.customerType || wo.customer_type || 'REGULER';
-                const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
-                const lapul = wo.lapul !== undefined ? wo.lapul : '-';
-                const wz = wo.workzone || '-';
-                const bookingDate = wo.bookingDate || wo.booking_date || '-';
-                const reportedDate = wo.reportedDate || '-';
-                const resolveDate = wo.resolveDate || '-';
-                const actualSolution = wo.actualSolution || '-';
-                const technician = wo.technician || '-';
-                const summaryVal = wo.summary || wo.description || '-';
-                const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
-                const reportedBy = wo.reportedBy || wo.reported_by || '-';
+            const reportedBy = wo.reportedBy || wo.reported_by || '-';
 
-                existingData.push([
-                    '', // placeholder for index
-                    orderId,
-                    serviceNo,
-                    ttr,
-                    custType,
-                    gaul,
-                    lapul,
-                    wz,
-                    bookingDate,
-                    reportedDate,
-                    resolveDate,
-                    actualSolution,
-                    technician,
-                    summaryVal,
-                    srcTicket,
-                    reportedBy
-                ]);
-                seenIncs.add(orderId);
+            if (orderId && orderId.match(/^INC\d+$/)) {
+                if (!seenIncs.has(orderId)) {
+                    const serviceNo = wo.serviceNo || wo.service_no || '-';
+                    const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
+                    const custType = wo.customerType || wo.customer_type || 'REGULER';
+                    const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
+                    const lapul = wo.lapul !== undefined ? wo.lapul : '-';
+                    const wz = wo.workzone || '-';
+                    const bookingDate = wo.bookingDate || wo.booking_date || '-';
+                    const reportedDate = wo.reportedDate || '-';
+                    const resolveDate = wo.resolveDate || '-';
+                    const actualSolution = wo.actualSolution || '-';
+                    const technician = wo.technician || '-';
+                    const summaryVal = wo.summary || wo.description || '-';
+                    const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
+
+                    existingData.push([
+                        '', // placeholder for index
+                        orderId,
+                        serviceNo,
+                        ttr,
+                        custType,
+                        gaul,
+                        lapul,
+                        wz,
+                        bookingDate,
+                        reportedDate,
+                        resolveDate,
+                        actualSolution,
+                        technician,
+                        summaryVal,
+                        srcTicket,
+                        reportedBy
+                    ]);
+                    seenIncs.add(orderId);
+                } else {
+                    // Update existing row if REPORTED BY is missing
+                    if (reportedBy && reportedBy !== '-') {
+                        const existingRow = existingData.find(row => row[1] === orderId);
+                        if (existingRow && (!existingRow[15] || existingRow[15] === '-')) {
+                            existingRow[15] = reportedBy;
+                        }
+                    }
+                }
             }
         });
 
