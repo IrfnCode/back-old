@@ -1329,6 +1329,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
             const repBy = (reportedBy || '').toUpperCase();
             const src = (sourceTicket || '').toUpperCase();
             const sum = (summary || '').toUpperCase();
+            if (repBy.includes('INFRACARE') || src.includes('INFRACARE')) return 'INFRACARE';
             if (repBy.includes('PROACTIVE_TICKET') || src.includes('PROACTIVE_TICKET') || sum.includes('SQM')) return 'SQM';
             if (repBy.includes('PROACTIVE_OHI') || src.includes('PROACTIVE_OHI') || sum.includes('UNSPEC') || sum.includes('OHI')) return 'UNSPEC';
             return 'REGULER';

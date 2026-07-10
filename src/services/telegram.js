@@ -985,6 +985,44 @@ Chat ID: <code>${chatId}</code>
         }
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // /tiketclose INCxxx — Single scrape to TIKET CLOSE
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/tiketclose\s+(INC\d+)/i, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const orderId = match[1].toUpperCase();
+
+        const loadingMsg = await bot.sendMessage(chatId, `⏳ *Mencari data ${orderId} di Insera...*`, { parse_mode: 'Markdown' });
+
+        try {
+            const { scrapeClosedTicketById } = await import('./scraper.js');
+            const ticket = await scrapeClosedTicketById(orderId);
+
+            if (!ticket) {
+                return bot.editMessageText(`❌ *Tiket ${orderId} tidak ditemukan.*`, { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown' });
+            }
+
+            const { exportClosedToSpreadsheet } = await import('./gdocs.js');
+            const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
+            const closedSheetName = 'TIKET CLOSE';
+
+            await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, [ticket]);
+
+            const link = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+            await bot.editMessageText(
+                `✅ *Berhasil Scrap Tiket Close!*\n\n` +
+                `Tiket *${orderId}* telah disisipkan ke sheet *TIKET CLOSE*.\n\n` +
+                `🔗 [Buka Google Spreadsheet](${link})`, 
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown', disable_web_page_preview: true }
+            );
+        } catch (error) {
+            console.error('❌ /tiketclose error:', error);
+            const errStr = (error.message || '').slice(0, 1000);
+            await bot.editMessageText(`❌ *Gagal Scrap ${orderId}:*\n${errStr}`,
+                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown' });
+        }
+    });
+
     // Register handlers
     registerInputHandler(bot);
     registerUnspecHandler(bot);

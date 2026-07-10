@@ -1648,3 +1648,23 @@ export async function scrapeClosedTickets(closedUrl) {
         }
     }
 }
+
+export async function scrapeClosedTicketById(orderId) {
+    try {
+        console.log(`🔎 [Closed Scraper By ID] Searching for ${orderId}...`);
+        
+        let url = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList?d-5564009-p=1&d-5564009-ps=10&d-5564009-fn_C_ID_TICKET=${orderId}`;
+        let tickets = await scrapeClosedTickets(url);
+        
+        if (!tickets || tickets.length === 0) {
+            console.log(`🔎 [Closed Scraper By ID] Not found in allTicketList, trying Repo...`);
+            url = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=10&d-7228731-fn_C_ID_TICKET=${orderId}`;
+            tickets = await scrapeClosedTickets(url);
+        }
+        
+        return tickets && tickets.length > 0 ? tickets[0] : null;
+    } catch (err) {
+        console.error(`❌ [Closed Scraper By ID] Error:`, err.message);
+        throw err;
+    }
+}
