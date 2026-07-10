@@ -986,39 +986,71 @@ Chat ID: <code>${chatId}</code>
     });
 
     // ─────────────────────────────────────────────────────────────
-    // /tiketclose INCxxx — Single scrape to TIKET CLOSE
+    // /tiketclose INCxxx, INCyyy — Multi scrape to TIKET CLOSE
     // ─────────────────────────────────────────────────────────────
-    bot.onText(/^\/tiketclose\s+(INC\d+)/i, async (msg, match) => {
+    bot.onText(/^\/tiketclose\s+(.+)/i, async (msg, match) => {
         const chatId = msg.chat.id;
-        const orderId = match[1].toUpperCase();
+        const textStr = match[1];
+        const incMatches = textStr.match(/INC\d+/gi);
 
-        const loadingMsg = await bot.sendMessage(chatId, `⏳ *Mencari data ${orderId} di Insera...*`, { parse_mode: 'Markdown' });
+        if (!incMatches || incMatches.length === 0) {
+            return bot.sendMessage(chatId, `❌ *Format Salah!* Pastikan Anda memasukkan nomor tiket (misal: /tiketclose INC1234, INC5678)`, { parse_mode: 'Markdown' });
+        }
+
+        const orderIds = [...new Set(incMatches.map(inc => inc.toUpperCase()))];
+        const loadingMsg = await bot.sendMessage(chatId, `⏳ *Mencari Data Close ${orderIds.length} Tiket...*`, { parse_mode: 'Markdown' });
 
         try {
             const { scrapeClosedTicketById } = await import('./scraper.js');
-            const ticket = await scrapeClosedTicketById(orderId);
-
-            if (!ticket) {
-                return bot.editMessageText(`❌ *Tiket ${orderId} tidak ditemukan.*`, { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown' });
-            }
-
             const { exportClosedToSpreadsheet } = await import('./gdocs.js');
             const spreadsheetId = '1583_RvfcTZ8-BZrMVQxpGZ25fZ_QyN8ziRsofN6zZtY';
             const closedSheetName = 'TIKET CLOSE';
 
-            await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, [ticket]);
+            const validTickets = [];
+            const notClosed = [];
+            const notFound = [];
+
+            for (const orderId of orderIds) {
+                const ticket = await scrapeClosedTicketById(orderId);
+                if (!ticket) {
+                    notFound.push(orderId);
+                    continue;
+                }
+                
+                const status = (ticket.status || '').toUpperCase();
+                // Consider CLOSED, CLOSE, SALAMSIM, FINALCHECK, MEDIACARE as closed status
+                if (['CLOSE', 'CLOSED', 'FINALCHECK', 'SALAMSIM', 'MEDIACARES'].some(s => status.includes(s))) {
+                    validTickets.push(ticket);
+                } else {
+                    notClosed.push(`${orderId} (${status})`);
+                }
+            }
+
+            if (validTickets.length > 0) {
+                await exportClosedToSpreadsheet(spreadsheetId, closedSheetName, validTickets);
+            }
 
             const link = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
-            await bot.editMessageText(
-                `✅ *Berhasil Scrap Tiket Close!*\n\n` +
-                `Tiket *${orderId}* telah disisipkan ke sheet *TIKET CLOSE*.\n\n` +
-                `🔗 [Buka Google Spreadsheet](${link})`, 
-                { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown', disable_web_page_preview: true }
-            );
+            
+            let resultMsg = `✅ *Selesai Scrap ${orderIds.length} Tiket!*\n\n`;
+            if (validTickets.length > 0) resultMsg += `✔️ *Berhasil Di-sheet:* ${validTickets.length} tiket\n`;
+            if (notClosed.length > 0) resultMsg += `⚠️ *Belum Close:* ${notClosed.join(', ')}\n`;
+            if (notFound.length > 0) resultMsg += `❌ *Tidak Ditemukan:* ${notFound.join(', ')}\n`;
+            
+            if (validTickets.length > 0) {
+                resultMsg += `\n🔗 [Buka Google Spreadsheet](${link})`;
+            }
+
+            await bot.editMessageText(resultMsg, { 
+                chat_id: chatId, 
+                message_id: loadingMsg.message_id, 
+                parse_mode: 'Markdown', 
+                disable_web_page_preview: true 
+            });
         } catch (error) {
             console.error('❌ /tiketclose error:', error);
             const errStr = (error.message || '').slice(0, 1000);
-            await bot.editMessageText(`❌ *Gagal Scrap ${orderId}:*\n${errStr}`,
+            await bot.editMessageText(`❌ *Gagal Scrap Tiket:*\n${errStr}`,
                 { chat_id: chatId, message_id: loadingMsg.message_id, parse_mode: 'Markdown' });
         }
     });
