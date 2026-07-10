@@ -444,16 +444,19 @@ Chat ID: <code>${chatId}</code>
 
         const closedUrl2 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
 
+        const closedUrl3 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_REALM=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_SLG=&d-7228731-fn_C_SOURCE_TICKET=PROACTIVE%2CCUSTOMER&d-7228731-fn_status_date_filter=&d-7228731-fn_status_date_filter=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-p=1&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CUSTOMER_SEGMENT=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-ps=100&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_C_OWNER=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_WITEL=`;
+
         const openData = await scrapeProactiveAndReguler(regulerUrl, proactiveUrl);
         
         // Scrape both sources
         const closedTickets1 = await scrapeClosedTickets(closedUrl1);
         const closedTickets2 = await scrapeClosedTickets(closedUrl2);
+        const closedTickets3 = await scrapeClosedTickets(closedUrl3);
 
         // Deduplicate closed tickets by ID
         const seenClosedIds = new Set();
         const combinedClosedData = [];
-        [...closedTickets1, ...closedTickets2].forEach(wo => {
+        [...closedTickets1, ...closedTickets2, ...closedTickets3].forEach(wo => {
             const inc = wo.orderId || wo.order_id;
             if (inc && inc.match(/^INC\d+$/) && !seenClosedIds.has(inc)) {
                 seenClosedIds.add(inc);
@@ -548,12 +551,15 @@ Chat ID: <code>${chatId}</code>
 
             const closedUrl2 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-p=1&d-7228731-ps=100&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statFrom)}&d-7228731-fn_status_date_filter=${encodeURIComponent(statTo)}&d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_OWNER=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_SOURCE_TICKET=CUSTOMER%2CPROACTIVE&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_CUSTOMER_SEGMENT=DCS%2CPL-TSEL&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_SLG=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_WITEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_REALM=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=`;
 
+            const closedUrl3 = `https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketListRepo?d-7228731-fn_C_OWNER_GROUP=&d-7228731-fn_C_REALM=&d-7228731-fn_C_WORK_ZONE=TPI%2CKMS%2CKIJ%2CTUB%2CRAI%2CTER%2CDBS%2CPYT&d-7228731-fn_C_DESCRIPTION_ASSIGMENT=&d-7228731-fn_C_CLASSIFICATION_PATH=&d-7228731-fn_C_DESCRIPTION_CUSTOMERID=&d-7228731-fn_C_ACTUAL_SOLUTION=&d-7228731-fn_C_SERVICE_NO=&d-7228731-fn_C_GUARANTE_STATUS=&d-7228731-fn_C_CLASSIFICATION_CATEGORY=&d-7228731-fn_C_SLG=&d-7228731-fn_C_SOURCE_TICKET=PROACTIVE%2CCUSTOMER&d-7228731-fn_status_date_filter=&d-7228731-fn_status_date_filter=&d-7228731-fn_C_CUSTOMER_ID=&d-7228731-fn_C_TICKET_ID_GAMAS=&d-7228731-p=1&d-7228731-fn_C_EXTERNAL_TICKETID=&d-7228731-fn_C_CUSTOMER_SEGMENT=&d-7228731-fn_C_REPORTED_PRIORITY=&d-7228731-fn_C_RELATED_TO_GAMAS=&d-7228731-fn_C_SERVICE_ID=&d-7228731-fn_C_PERANGKAT=&d-7228731-fn_C_CHANNEL=&d-7228731-fn_C_REGION=&d-7228731-fn_C_CUSTOMER_TYPE=&d-7228731-fn_C_ID_TICKET=&d-7228731-fn_C_SERVICE_TYPE=&d-7228731-ps=100&d-7228731-fn_C_INCIDENT_DOMAIN=&d-7228731-fn_DATEMODIFIED=&d-7228731-fn_C_CLOSED_BY=&d-7228731-fn_reported_date_filter=${encodeURIComponent(repFrom)}&d-7228731-fn_reported_date_filter=${encodeURIComponent(repTo)}&d-7228731-fn_C_OWNER=&d-7228731-fn_C_KODE_PRODUK=&d-7228731-fn_C_PIPE_NAME=&d-7228731-fn_C_WITEL=`;
+
             const closedTickets1 = await scrapeClosedTickets(closedUrl1);
             const closedTickets2 = await scrapeClosedTickets(closedUrl2);
+            const closedTickets3 = await scrapeClosedTickets(closedUrl3);
 
             const seenClosedIds = new Set();
             const combinedClosedData = [];
-            [...closedTickets1, ...closedTickets2].forEach(wo => {
+            [...closedTickets1, ...closedTickets2, ...closedTickets3].forEach(wo => {
                 const inc = wo.orderId || wo.order_id;
                 if (inc && inc.match(/^INC\d+$/) && !seenClosedIds.has(inc)) {
                     seenClosedIds.add(inc);
