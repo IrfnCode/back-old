@@ -61,12 +61,12 @@ async function syncToSheets() {
 export function initInfraBot() {
     const token = process.env.INFRA_BOT_TOKEN;
     if (!token) {
-        console.log('⚠️ INFRA_BOT_TOKEN not found, skipping Infra Bot initialization');
+        console.log('⚠️ INFRA_BOT_TOKEN not found, skipping PELANTAR Bot initialization');
         return;
     }
 
     const bot = new TelegramBot(token, { polling: true });
-    console.log('🚀 [INFRA BOT] Bot Peduli Infra Started');
+    console.log('🚀 [PELANTAR] Bot PELANTAR Started');
 
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
@@ -81,7 +81,7 @@ export function initInfraBot() {
                 ]
             }
         };
-        const welcomeText = `👋 Selamat datang di Bot <b>PEDULI INFRA</b> (INFRACARE).\n\n`
+        const welcomeText = `👋 Selamat datang di Bot <b>PELANTAR</b>\n<i>(Peduli Layanan &amp; Infrastruktur Network Tanjung Pinang &amp; Sekitar)</i>\n\n`
             + `Silakan pilih menu di bawah ini untuk mengelola laporan Infrastruktur:`;
         bot.sendMessage(chatId, welcomeText, { parse_mode: 'HTML', ...opts });
     });
@@ -95,7 +95,7 @@ export function initInfraBot() {
             return;
         }
         
-        let text = `📂 <b>DAFTAR ORDER INFRACARE (OPEN)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+        let text = `📂 <b>DAFTAR ORDER PELANTAR (OPEN)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
         orders.forEach((o, idx) => {
             text += `<b>${idx+1}. ID:</b> <code>${o.order_id}</code>\n`;
             text += `🚨 <b>Kategori:</b> ${o.kategori}\n`;
@@ -122,7 +122,7 @@ export function initInfraBot() {
                     ]
                 }
             };
-            bot.editMessageText('🚨 <b>Pilih Kategori Infracare:</b>', {
+            bot.editMessageText('🚨 <b>Pilih Kategori Order PELANTAR:</b>', {
                 chat_id: chatId,
                 message_id: query.message.message_id,
                 parse_mode: 'HTML',
