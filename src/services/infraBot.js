@@ -69,6 +69,13 @@ export function initInfraBot() {
     const bot = new TelegramBot(token, { polling: true });
     console.log('🚀 [PELANTAR] Bot PELANTAR Started');
 
+    // Helper: cek apakah chatId termasuk admin yang boleh hapus order
+    const adminIds = (process.env.INFRA_ADMIN_IDS || '')
+        .split(',')
+        .map(id => id.trim())
+        .filter(Boolean);
+    const isAdmin = (chatId) => adminIds.length === 0 || adminIds.includes(String(chatId));
+
     bot.onText(/\/start/, (msg) => {
         const chatId = msg.chat.id;
         userStates.delete(chatId); // reset state
@@ -225,6 +232,10 @@ export function initInfraBot() {
             }
         }
         else if (data.startsWith('DEL_')) {
+            if (!isAdmin(chatId)) {
+                bot.answerCallbackQuery(query.id, { text: '🚫 Anda tidak memiliki akses untuk menghapus order.', show_alert: true });
+                return;
+            }
             const orderId = data.replace('DEL_', '');
             const order = getInfraOrderById(orderId);
             if (!order) {
@@ -248,6 +259,10 @@ export function initInfraBot() {
             return;
         }
         else if (data.startsWith('CONFIRM_DEL_')) {
+            if (!isAdmin(chatId)) {
+                bot.answerCallbackQuery(query.id, { text: '🚫 Anda tidak memiliki akses untuk menghapus order.', show_alert: true });
+                return;
+            }
             const orderId = data.replace('CONFIRM_DEL_', '');
             const success = deleteInfraOrder(orderId);
             if (success) {
