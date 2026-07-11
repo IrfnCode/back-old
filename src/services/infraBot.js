@@ -153,7 +153,16 @@ export function initInfraBot() {
             + `✅ CLOSE : ${totalClose}\n\n`
             + `<pre>${table}</pre>`;
             
-        bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+        bot.sendMessage(chatId, text, { 
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '📦 DETAIL ODP TERBUKA', callback_data: 'SHOWCAT_ODP' }],
+                    [{ text: '🏗️ DETAIL PINDAH TIANG', callback_data: 'SHOWCAT_TIANG' }],
+                    [{ text: '⚠️ DETAIL ALPRO', callback_data: 'SHOWCAT_ALPRO' }]
+                ]
+            }
+        });
     });
 
     // Handle /close <orderId>
@@ -282,6 +291,32 @@ export function initInfraBot() {
                 parse_mode: 'HTML',
                 reply_markup: { inline_keyboard: keyboard }
             });
+        }
+        else if (data.startsWith('SHOWCAT_')) {
+            let catName = '';
+            if (data === 'SHOWCAT_ODP') catName = 'ODP TERBUKA';
+            else if (data === 'SHOWCAT_TIANG') catName = 'PINDAH TIANG';
+            else if (data === 'SHOWCAT_ALPRO') catName = 'ALPRO (KU JATUH DLL)';
+
+            const openOrders = getOpenInfraOrders().filter(o => o.kategori === catName);
+            
+            if (openOrders.length === 0) {
+                bot.answerCallbackQuery(query.id, { text: `✅ Tidak ada order OPEN untuk kategori ${catName}.`, show_alert: true });
+                return;
+            }
+
+            let text = `<b>DETAIL ORDER OPEN: ${catName}</b>\n`;
+            let codeBlock = '';
+            openOrders.forEach((o, idx) => {
+                // Remove newlines from keterangan to keep it one-line if possible
+                const ket = o.keterangan.replace(/\n/g, ' | ').substring(0, 50); 
+                codeBlock += `${idx+1}. ${o.order_id} - ${ket}\n`;
+            });
+            text += `<pre>${codeBlock}</pre>`;
+            text += `\n<i>Gunakan <code>/close ID_ORDER</code> untuk menutup order.</i>`;
+
+            bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+            bot.answerCallbackQuery(query.id);
         }
         else if (data.startsWith('VIEW_')) {
             const orderId = data.replace('VIEW_', '');
