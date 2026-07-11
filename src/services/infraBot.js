@@ -397,8 +397,28 @@ export function initInfraBot() {
                 return;
             }
             state.keterangan = msg.text;
+            
+            if (state.category === 'ODP TERBUKA') {
+                state.step = 'WAIT_CATUAN';
+                bot.sendMessage(chatId, '✅ <b>Keterangan disimpan.</b>\n\n📝 Selanjutnya, silakan ketik <b>Catuan / Label ODP</b>:', { parse_mode: 'HTML' });
+            } else {
+                state.step = 'WAIT_FOTO';
+                bot.sendMessage(chatId, `✅ <b>Keterangan disimpan.</b>\n\n📸 Selanjutnya, silakan <b>Kirimkan Foto Evident</b>.\n<i>(Anda bisa mengirim lebih dari 1 foto / album sekaligus).</i>\n\nJika sudah selesai upload semua foto, klik tombol di bawah ini:`, { 
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [[{ text: '✅ SELESAI UPLOAD FOTO', callback_data: 'DONE_FOTO' }]]
+                    }
+                });
+            }
+        }
+        else if (state.step === 'WAIT_CATUAN') {
+            if (!msg.text) {
+                bot.sendMessage(chatId, '⚠️ <i>Harap kirimkan teks untuk Catuan / Label ODP.</i>', { parse_mode: 'HTML' });
+                return;
+            }
+            state.keterangan += `\n🏷️ <b>Catuan / Label:</b> ${msg.text}`;
             state.step = 'WAIT_FOTO';
-            bot.sendMessage(chatId, `✅ <b>Keterangan disimpan.</b>\n\n📸 Selanjutnya, silakan <b>Kirimkan Foto Evident</b>.\n<i>(Anda bisa mengirim lebih dari 1 foto / album sekaligus).</i>\n\nJika sudah selesai upload semua foto, klik tombol di bawah ini:`, { 
+            bot.sendMessage(chatId, `✅ <b>Catuan disimpan.</b>\n\n📸 Selanjutnya, silakan <b>Kirimkan Foto Evident</b>.\n<i>(Anda bisa mengirim lebih dari 1 foto / album sekaligus).</i>\n\nJika sudah selesai upload semua foto, klik tombol di bawah ini:`, { 
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [[{ text: '✅ SELESAI UPLOAD FOTO', callback_data: 'DONE_FOTO' }]]
