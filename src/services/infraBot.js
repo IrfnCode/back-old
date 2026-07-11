@@ -80,13 +80,19 @@ export function initInfraBot() {
         const chatId = msg.chat.id;
         userStates.delete(chatId); // reset state
 
+        const inlineButtons = [
+            [{ text: '➕ INPUT ORDER', callback_data: 'INPUT_ORDER' }],
+            [{ text: '📂 LIST ORDER OPEN', callback_data: 'LIST_OPEN' }],
+            [{ text: '✅ LIST ORDER CLOSE', callback_data: 'LIST_CLOSE' }]
+        ];
+
+        if (isAdmin(msg.from.id)) {
+            inlineButtons.push([{ text: '🗑️ HAPUS ORDER', callback_data: 'HAPUS_MENU' }]);
+        }
+
         const opts = {
             reply_markup: {
-                inline_keyboard: [
-                    [{ text: '➕ INPUT ORDER', callback_data: 'INPUT_ORDER' }],
-                    [{ text: '📂 LIST ORDER OPEN', callback_data: 'LIST_OPEN' }],
-                    [{ text: '✅ LIST ORDER CLOSE', callback_data: 'LIST_CLOSE' }]
-                ]
+                inline_keyboard: inlineButtons
             }
         };
         const welcomeText = `👋 Selamat datang di Bot <b>PELANTAR</b>\n<i>(Peduli Layanan &amp; Infrastruktur Network Tanjung Pinang &amp; Sekitar)</i>\n\n`
@@ -180,6 +186,39 @@ export function initInfraBot() {
                 reply_markup: { inline_keyboard: keyboard }
             });
         }
+        else if (data === 'HAPUS_MENU') {
+            const userId = query.from.id;
+            if (!isAdmin(userId)) {
+                bot.answerCallbackQuery(query.id, { text: '🚫 Anda tidak memiliki akses.', show_alert: true });
+                return;
+            }
+            bot.editMessageText('🗑️ <b>Pilih Daftar Order untuk Dihapus:</b>', {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '📂 DARI ORDER OPEN', callback_data: 'LIST_HAPUS_OPEN' }],
+                        [{ text: '✅ DARI ORDER CLOSE', callback_data: 'LIST_HAPUS_CLOSE' }]
+                    ]
+                }
+            });
+        }
+        else if (data === 'LIST_HAPUS_OPEN' || data === 'LIST_HAPUS_CLOSE') {
+            const userId = query.from.id;
+            if (!isAdmin(userId)) return;
+
+            const orders = data === 'LIST_HAPUS_OPEN' ? getOpenInfraOrders() : getClosedInfraOrders();
+            if (orders.length === 0) {
+                bot.sendMessage(chatId, '📭 <i>Tidak ada Order saat ini.</i>', { parse_mode: 'HTML' });
+                return;
+            }
+            const keyboard = orders.map(o => ([{ text: `🗑️ [${o.status}] ${o.order_id} - ${o.kategori}`, callback_data: `DEL_${o.order_id}` }]));
+            bot.sendMessage(chatId, '<b>Pilih Order yang ingin dihapus:</b>', {
+                parse_mode: 'HTML',
+                reply_markup: { inline_keyboard: keyboard }
+            });
+        }
         else if (data.startsWith('VIEW_')) {
             const orderId = data.replace('VIEW_', '');
             const order = getInfraOrderById(orderId);
@@ -201,11 +240,6 @@ export function initInfraBot() {
             const inlineButtons = [];
             if (order.status === 'OPEN') {
                 inlineButtons.push([{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]);
-            }
-            // Tombol hapus hanya muncul untuk admin (cek ID user yang mengeklik, bukan ID grup)
-            const userId = query.from.id;
-            if (isAdmin(userId)) {
-                inlineButtons.push([{ text: '🗑️ HAPUS ORDER INI', callback_data: `DEL_${order.order_id}` }]);
             }
             if (inlineButtons.length > 0) opts.reply_markup = { inline_keyboard: inlineButtons };
 
