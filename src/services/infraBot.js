@@ -101,8 +101,8 @@ export function initInfraBot() {
         bot.sendMessage(chatId, welcomeText, { parse_mode: 'HTML', ...opts });
     });
 
-    // Handle /listorder for groups
-    bot.onText(/\/listorder/, (msg) => {
+    // Handle /listpelantar for groups
+    bot.onText(/\/listpelantar/, (msg) => {
         const chatId = msg.chat.id;
         const allOrders = getAllInfraOrders();
         
