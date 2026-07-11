@@ -231,8 +231,11 @@ export function initInfraBot() {
                     bot.answerCallbackQuery(query.id, { text: '⚠️ Anda belum mengirimkan satupun foto!', show_alert: true });
                     return;
                 }
+                // Langsung jawab callback agar tombol tidak nge-lag
+                bot.answerCallbackQuery(query.id, { text: `✅ ${state.foto_paths.length} foto diterima. Lanjut ke lokasi...` });
                 state.step = 'WAIT_LOKASI';
                 bot.sendMessage(chatId, `✅ <b>${state.foto_paths.length} Foto evident tersimpan.</b>\n\n📍 Terakhir, silakan <b>Kirim Shareloc Langsung</b> melalui fitur Location Telegram, atau ketik koordinatnya (Lat, Long).`, { parse_mode: 'HTML' });
+                return; // sudah jawab, skip answerCallbackQuery di bawah
             }
         }
         
@@ -280,7 +283,12 @@ export function initInfraBot() {
                     if (url) state.foto_urls.push(url);
                 });
 
-                // Notifikasi ringan bahwa foto diterima (hanya jika bukan bagian dari grup media yang sama, tapi Telegram sulit membedakannya langsung tanpa delay. Kita kirim notif kecil atau diam saja karena sudah ada inline button).
+                // Konfirmasi ke user bahwa foto diterima
+                const count = state.foto_paths.length;
+                bot.sendMessage(chatId, 
+                    `📸 <b>Foto ke-${count} diterima!</b>\n<i>Kirim foto lain jika ada, atau tekan tombol <b>SELESAI UPLOAD FOTO</b> untuk lanjut.</i>`,
+                    { parse_mode: 'HTML' }
+                );
             } catch (err) {
                 console.error(err);
                 bot.sendMessage(chatId, '❌ Gagal memproses foto. Silakan coba lagi.');
