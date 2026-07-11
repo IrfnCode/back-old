@@ -202,8 +202,9 @@ export function initInfraBot() {
             if (order.status === 'OPEN') {
                 inlineButtons.push([{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]);
             }
-            // Tombol hapus hanya muncul untuk admin
-            if (isAdmin(chatId)) {
+            // Tombol hapus hanya muncul untuk admin (cek ID user yang mengeklik, bukan ID grup)
+            const userId = query.from.id;
+            if (isAdmin(userId)) {
                 inlineButtons.push([{ text: '🗑️ HAPUS ORDER INI', callback_data: `DEL_${order.order_id}` }]);
             }
             if (inlineButtons.length > 0) opts.reply_markup = { inline_keyboard: inlineButtons };
@@ -235,7 +236,8 @@ export function initInfraBot() {
             }
         }
         else if (data.startsWith('DEL_')) {
-            if (!isAdmin(chatId)) {
+            const userId = query.from.id;
+            if (!isAdmin(userId)) {
                 bot.answerCallbackQuery(query.id, { text: '🚫 Anda tidak memiliki akses untuk menghapus order.', show_alert: true });
                 return;
             }
@@ -262,7 +264,8 @@ export function initInfraBot() {
             return;
         }
         else if (data.startsWith('CONFIRM_DEL_')) {
-            if (!isAdmin(chatId)) {
+            const userId = query.from.id;
+            if (!isAdmin(userId)) {
                 bot.answerCallbackQuery(query.id, { text: '🚫 Anda tidak memiliki akses untuk menghapus order.', show_alert: true });
                 return;
             }
