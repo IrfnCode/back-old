@@ -1288,3 +1288,8 @@ export function closeInfraOrder(orderId) {
   const result = stmt.run(formatToWIB(), orderId);
   return result.changes > 0;
 }
+
+export function deleteInfraOrder(orderId) {
+  const result = db.prepare("DELETE FROM infra_orders WHERE order_id = ?").run(orderId);
+  return result.changes > 0;
+}

@@ -7,7 +7,8 @@ import {
     getOpenInfraOrders,
     getClosedInfraOrders,
     getInfraOrderById,
-    closeInfraOrder
+    closeInfraOrder,
+    deleteInfraOrder
 } from './database.js';
 import { exportInfraToSpreadsheet } from './gdocs.js';
 
@@ -190,13 +191,12 @@ export function initInfraBot() {
                 + `━━━━━━━━━━━━━━━━━━━━`;
 
             const opts = { parse_mode: 'HTML', disable_web_page_preview: true };
+            const inlineButtons = [];
             if (order.status === 'OPEN') {
-                opts.reply_markup = {
-                    inline_keyboard: [
-                        [{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]
-                    ]
-                };
+                inlineButtons.push([{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]);
             }
+            inlineButtons.push([{ text: '🗑️ HAPUS ORDER INI', callback_data: `DEL_${order.order_id}` }]);
+            opts.reply_markup = { inline_keyboard: inlineButtons };
 
             // Parse multiple URLs
             const urls = order.foto_path ? order.foto_path.split(',').filter(u => u.trim() !== '') : [];
@@ -223,6 +223,41 @@ export function initInfraBot() {
             } else {
                 bot.sendMessage(chatId, `❌ Gagal menutup order <code>${orderId}</code>.`, { parse_mode: 'HTML' });
             }
+        }
+        else if (data.startsWith('DEL_')) {
+            const orderId = data.replace('DEL_', '');
+            const order = getInfraOrderById(orderId);
+            if (!order) {
+                bot.answerCallbackQuery(query.id, { text: 'Order tidak ditemukan.', show_alert: true });
+                return;
+            }
+            // Kirim konfirmasi sebelum hapus
+            bot.sendMessage(chatId,
+                `⚠️ <b>Konfirmasi Hapus</b>\n━━━━━━━━━━━━━━━━━━━━\n🆔 <code>${orderId}</code>\n🚨 ${order.kategori}\n\nYakin ingin <b>menghapus permanen</b> order ini? Tindakan ini tidak bisa dibatalkan!`,
+                {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '❌ YA, HAPUS PERMANEN', callback_data: `CONFIRM_DEL_${orderId}` }],
+                            [{ text: '⬅️ BATAL', callback_data: `VIEW_${orderId}` }]
+                        ]
+                    }
+                }
+            );
+            bot.answerCallbackQuery(query.id);
+            return;
+        }
+        else if (data.startsWith('CONFIRM_DEL_')) {
+            const orderId = data.replace('CONFIRM_DEL_', '');
+            const success = deleteInfraOrder(orderId);
+            if (success) {
+                bot.answerCallbackQuery(query.id, { text: `🗑️ Order ${orderId} berhasil dihapus.` });
+                bot.sendMessage(chatId, `🗑️ Order <code>${orderId}</code> telah <b>dihapus permanen</b>.`, { parse_mode: 'HTML' });
+                syncToSheets();
+            } else {
+                bot.answerCallbackQuery(query.id, { text: '❌ Gagal menghapus order.', show_alert: true });
+            }
+            return;
         }
         else if (data === 'DONE_FOTO') {
             const state = userStates.get(chatId);
