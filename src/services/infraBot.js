@@ -308,12 +308,14 @@ export function initInfraBot() {
             let text = `<b>DETAIL ORDER OPEN: ${catName}</b>\n`;
             let codeBlock = '';
             openOrders.forEach((o, idx) => {
-                // Remove newlines from keterangan to keep it one-line if possible
-                const ket = o.keterangan.replace(/\n/g, ' | ').substring(0, 50); 
-                codeBlock += `${idx+1}. ${o.order_id} - ${ket}\n`;
+                codeBlock += `${idx+1}. ID: ${o.order_id}\n`;
+                codeBlock += `Kategori: ${o.kategori}\n`;
+                codeBlock += `Ket: ${o.keterangan.replace(/<[^>]*>?/gm, '')}\n`; // remove html tags just in case
+                codeBlock += `Lokasi: ${o.lokasi}\n`;
+                codeBlock += `Waktu: ${o.created_at}\n`;
+                codeBlock += `━━━━━━━━━━━━━━━━━━━━\n`;
             });
             text += `<pre>${codeBlock}</pre>`;
-            text += `\n<i>Gunakan <code>/close ID_ORDER</code> untuk menutup order.</i>`;
 
             bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
             bot.answerCallbackQuery(query.id);
