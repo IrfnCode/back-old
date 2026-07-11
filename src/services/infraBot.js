@@ -156,6 +156,36 @@ export function initInfraBot() {
         bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     });
 
+    // Handle /close <orderId>
+    bot.onText(/\/close(?:\s+(.+))?/, (msg, match) => {
+        const chatId = msg.chat.id;
+        const orderId = match[1] ? match[1].trim() : null;
+
+        if (!orderId) {
+            bot.sendMessage(chatId, '⚠️ Format salah. Gunakan: <code>/close INFRA-XXXXX</code>', { parse_mode: 'HTML' });
+            return;
+        }
+
+        const order = getInfraOrderById(orderId);
+        if (!order) {
+            bot.sendMessage(chatId, `❌ Order <code>${orderId}</code> tidak ditemukan.`, { parse_mode: 'HTML' });
+            return;
+        }
+
+        if (order.status === 'CLOSED') {
+            bot.sendMessage(chatId, `ℹ️ Order <code>${orderId}</code> sudah ditutup sebelumnya.`, { parse_mode: 'HTML' });
+            return;
+        }
+
+        const success = closeInfraOrder(orderId);
+        if (success) {
+            bot.sendMessage(chatId, `🎉 Order <code>${orderId}</code> berhasil ditutup (CLOSED).`, { parse_mode: 'HTML' });
+            syncToSheets(); // Update sheets
+        } else {
+            bot.sendMessage(chatId, `❌ Gagal menutup order <code>${orderId}</code>.`, { parse_mode: 'HTML' });
+        }
+    });
+
     bot.on('callback_query', async (query) => {
         const chatId = query.message.chat.id;
         const data = query.data;
@@ -272,9 +302,6 @@ export function initInfraBot() {
 
             const opts = { parse_mode: 'HTML', disable_web_page_preview: true };
             const inlineButtons = [];
-            if (order.status === 'OPEN') {
-                inlineButtons.push([{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]);
-            }
             if (inlineButtons.length > 0) opts.reply_markup = { inline_keyboard: inlineButtons };
 
             // Parse multiple URLs
@@ -291,16 +318,6 @@ export function initInfraBot() {
                 }
             } else {
                 bot.sendMessage(chatId, msgText, opts);
-            }
-        }
-        else if (data.startsWith('CLOSE_')) {
-            const orderId = data.replace('CLOSE_', '');
-            const success = closeInfraOrder(orderId);
-            if (success) {
-                bot.sendMessage(chatId, `🎉 Order <code>${orderId}</code> berhasil ditutup (CLOSED).`, { parse_mode: 'HTML' });
-                syncToSheets(); // Update sheets
-            } else {
-                bot.sendMessage(chatId, `❌ Gagal menutup order <code>${orderId}</code>.`, { parse_mode: 'HTML' });
             }
         }
         else if (data.startsWith('DEL_')) {
