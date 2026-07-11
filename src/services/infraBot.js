@@ -202,8 +202,11 @@ export function initInfraBot() {
             if (order.status === 'OPEN') {
                 inlineButtons.push([{ text: '✅ TANDAI SEBAGAI SELESAI (CLOSE)', callback_data: `CLOSE_${order.order_id}` }]);
             }
-            inlineButtons.push([{ text: '🗑️ HAPUS ORDER INI', callback_data: `DEL_${order.order_id}` }]);
-            opts.reply_markup = { inline_keyboard: inlineButtons };
+            // Tombol hapus hanya muncul untuk admin
+            if (isAdmin(chatId)) {
+                inlineButtons.push([{ text: '🗑️ HAPUS ORDER INI', callback_data: `DEL_${order.order_id}` }]);
+            }
+            if (inlineButtons.length > 0) opts.reply_markup = { inline_keyboard: inlineButtons };
 
             // Parse multiple URLs
             const urls = order.foto_path ? order.foto_path.split(',').filter(u => u.trim() !== '') : [];
