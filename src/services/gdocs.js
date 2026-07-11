@@ -2171,17 +2171,35 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
         await ensureSheetExists(sheets, spreadsheetId, sheetName);
 
         const values = [];
-        const headers = ['ORDER ID', 'WAKTU', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN', 'STATUS'];
+        const headers = ['ORDER ID', 'WAKTU', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN UTAMA', 'EVIDEN LAINNYA', 'STATUS'];
         values.push(headers);
 
         infraOrders.forEach(order => {
+            const urls = (order.foto_path || '').split(',').filter(u => u.trim() !== '');
+            let evidenUtama = '-';
+            let evidenLainnya = '-';
+            
+            if (urls.length > 0) {
+                const firstUrl = urls[0];
+                if (firstUrl.startsWith('http')) {
+                    evidenUtama = `=IMAGE("${firstUrl}")`;
+                } else {
+                    evidenUtama = firstUrl; // Fallback jika path lokal
+                }
+                
+                if (urls.length > 1) {
+                    evidenLainnya = urls.slice(1).join('\n');
+                }
+            }
+
             values.push([
                 order.order_id || '-',
                 order.created_at || '-',
                 order.kategori || '-',
                 order.keterangan || '-',
                 order.lokasi || '-',
-                order.foto_path || '-',
+                evidenUtama,
+                evidenLainnya,
                 order.status || 'OPEN'
             ]);
         });
@@ -2189,7 +2207,7 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
         // Clear existing
         await sheets.spreadsheets.values.clear({
             spreadsheetId,
-            range: `${sheetName}!A:G`
+            range: `${sheetName}!A:H`
         });
 
         // Update values
