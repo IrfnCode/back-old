@@ -106,6 +106,7 @@ export function initInfraBot() {
         });
         
         bot.sendMessage(chatId, text, { parse_mode: 'HTML', disable_web_page_preview: true });
+    });
 
     bot.on('callback_query', async (query) => {
         const chatId = query.message.chat.id;
@@ -253,7 +254,7 @@ export function initInfraBot() {
             }
             state.keterangan = msg.text;
             state.step = 'WAIT_FOTO';
-            bot.sendMessage(chatId, '✅ <b>Keterangan disimpan.</b>\n\n📸 Selanjutnya, silakan <b>Kirimkan Foto Evident</b>.\n<i>(Anda bisa mengirim lebih dari 1 foto / album sekaligus).</i>\n\nJika sudah selesai upload semua foto, klik tombol di bawah ini:', { 
+            bot.sendMessage(chatId, `✅ <b>Keterangan disimpan.</b>\n\n📸 Selanjutnya, silakan <b>Kirimkan Foto Evident</b>.\n<i>(Anda bisa mengirim lebih dari 1 foto / album sekaligus).</i>\n\nJika sudah selesai upload semua foto, klik tombol di bawah ini:`, { 
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [[{ text: '✅ SELESAI UPLOAD FOTO', callback_data: 'DONE_FOTO' }]]
