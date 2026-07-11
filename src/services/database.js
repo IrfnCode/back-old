@@ -1275,6 +1275,10 @@ export function getOpenInfraOrders() {
   return db.prepare("SELECT * FROM infra_orders WHERE status = 'OPEN' ORDER BY created_at ASC").all();
 }
 
+export function getAllInfraOrders() {
+  return db.prepare("SELECT * FROM infra_orders").all();
+}
+
 export function getClosedInfraOrders() {
   return db.prepare("SELECT * FROM infra_orders WHERE status = 'CLOSED' ORDER BY updated_at DESC LIMIT 50").all();
 }

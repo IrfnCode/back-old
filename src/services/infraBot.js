@@ -6,6 +6,7 @@ import {
     addInfraOrder,
     getOpenInfraOrders,
     getClosedInfraOrders,
+    getAllInfraOrders,
     getInfraOrderById,
     closeInfraOrder,
     deleteInfraOrder
@@ -103,23 +104,56 @@ export function initInfraBot() {
     // Handle /listorder for groups
     bot.onText(/\/listorder/, (msg) => {
         const chatId = msg.chat.id;
-        const orders = getOpenInfraOrders();
-        if (orders.length === 0) {
-            bot.sendMessage(chatId, '📭 <i>Tidak ada Order OPEN saat ini.</i>', { parse_mode: 'HTML' });
-            return;
-        }
+        const allOrders = getAllInfraOrders();
         
-        let text = `📂 <b>DAFTAR ORDER PELANTAR (OPEN)</b>\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-        orders.forEach((o, idx) => {
-            text += `<b>${idx+1}. ID:</b> <code>${o.order_id}</code>\n`;
-            text += `🚨 <b>Kategori:</b> ${o.kategori}\n`;
-            text += `📝 <b>Ket:</b> ${o.keterangan}\n`;
-            text += `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(o.lokasi)}">Buka Map</a>\n`;
-            text += `🕒 <b>Waktu:</b> ${o.created_at}\n`;
-            text += `━━━━━━━━━━━━━━━━━━━━\n`;
+        let totalOpen = 0;
+        let totalClose = 0;
+        
+        // Count dictionary
+        const summary = {
+            'ODP TERBUKA': { open: 0, close: 0 },
+            'PINDAH TIANG': { open: 0, close: 0 },
+            'ALPRO (KU JATUH DLL)': { open: 0, close: 0 }
+        };
+
+        allOrders.forEach(o => {
+            const cat = o.kategori;
+            const status = o.status;
+            
+            // In case of unknown categories, fallback
+            if (!summary[cat]) {
+                summary[cat] = { open: 0, close: 0 };
+            }
+            
+            if (status === 'OPEN') {
+                summary[cat].open++;
+                totalOpen++;
+            } else if (status === 'CLOSED') {
+                summary[cat].close++;
+                totalClose++;
+            }
         });
+
+        // Format tabel 
+        const pad = (str, len) => String(str).padEnd(len, ' ');
+        let table = `KATEGORI        OPEN  CLOSE TOTAL\n`;
+        table += `---------------------------------\n`;
         
-        bot.sendMessage(chatId, text, { parse_mode: 'HTML', disable_web_page_preview: true });
+        for (const [cat, data] of Object.entries(summary)) {
+            // Simplify category name for table width
+            let shortCat = cat;
+            if (cat === 'ALPRO (KU JATUH DLL)') shortCat = 'ALPRO';
+            
+            const total = data.open + data.close;
+            table += `${pad(shortCat, 15)} ${pad(data.open, 5)} ${pad(data.close, 5)} ${total}\n`;
+        }
+
+        let text = `📊 <b>PELANTAR REPORT</b>\n`
+            + `🟢 OPEN : ${totalOpen}\n`
+            + `✅ CLOSE : ${totalClose}\n\n`
+            + `<pre>${table}</pre>`;
+            
+        bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
     });
 
     bot.on('callback_query', async (query) => {
