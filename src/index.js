@@ -47,6 +47,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDailySync, syncClosedTickets } from './services/dailySync.js';
 import { sendDailyReport, initDailyReport, restartDailyReport, stopDailyReport } from './services/dailyReport.js';
+import { initInfraBot } from './services/infraBot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2098,6 +2099,7 @@ server.listen(PORT, '0.0.0.0', () => {
   try {
     initDailySync();
     initDailyReport();
+    initInfraBot();
   } catch (e) {
     console.error('❌ Failed to initialize daily report/sync services:', e.message);
   }

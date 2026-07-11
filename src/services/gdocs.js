@@ -1337,6 +1337,7 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
 
         // Keep track of INC numbers already present in the sheet
         const seenIncs = new Set();
+        const serviceNoCounts = new Map();
         const existingData = [];
 
         const isShifted = (rowArr) => {
@@ -1359,6 +1360,11 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     const inc = row[1].trim();
                     if (inc && inc.match(/^INC\d+$/)) {
                         seenIncs.add(inc);
+                        
+                        const sNo = (row[2] || '').trim();
+                        if (sNo && sNo !== '-') {
+                            serviceNoCounts.set(sNo, (serviceNoCounts.get(sNo) || 0) + 1);
+                        }
                         
                         let formattedRow = [...row];
                         if (formattedRow.length <= 14 || isShifted(formattedRow)) {
@@ -1401,7 +1407,21 @@ export async function exportClosedToSpreadsheet(spreadsheetId, sheetName, newClo
                     const serviceNo = wo.serviceNo || wo.service_no || '-';
                     const ttr = wo.ttrCustomer || wo.ttr_customer || '-';
                     const custType = wo.customerType || wo.customer_type || 'REGULER';
-                    const gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
+                    let gaul = wo.gaul !== undefined && wo.gaul !== '-' ? wo.gaul : extractGaulFromSummary(wo.summary || wo.description || '');
+                    
+                    // Deteksi GAUL otomatis jika nomor internet sama tapi nomor tiket (INC) berbeda
+                    if (gaul === '-' && serviceNo && serviceNo !== '-') {
+                        const currentCount = serviceNoCounts.get(serviceNo) || 0;
+                        if (currentCount > 0) {
+                            gaul = 'GAUL';
+                        }
+                    }
+
+                    // Tambahkan ke map agar jika ada tiket baru lagi dengan inet yang sama terdeteksi
+                    if (serviceNo && serviceNo !== '-') {
+                        serviceNoCounts.set(serviceNo, (serviceNoCounts.get(serviceNo) || 0) + 1);
+                    }
+
                     const lapul = wo.lapul !== undefined ? wo.lapul : '-';
                     const wz = wo.workzone || '-';
                     const bookingDate = wo.bookingDate || wo.booking_date || '-';
@@ -2135,6 +2155,55 @@ export async function exportDashboardToSpreadsheet(spreadsheetId, sheetName) {
         return { success: true };
     } catch (error) {
         console.error('❌ [GDOCS] Failed to export Dashboard sheet:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Export Infra Orders to Spreadsheet
+ */
+export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
+    try {
+        const auth = getAuthClient();
+        const sheets = google.sheets({ version: 'v4', auth });
+        const sheetName = 'PEDULI INFRA';
+
+        await ensureSheetExists(sheets, spreadsheetId, sheetName);
+
+        const values = [];
+        const headers = ['ORDER ID', 'WAKTU', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN', 'STATUS'];
+        values.push(headers);
+
+        infraOrders.forEach(order => {
+            values.push([
+                order.order_id || '-',
+                order.created_at || '-',
+                order.kategori || '-',
+                order.keterangan || '-',
+                order.lokasi || '-',
+                order.foto_path || '-',
+                order.status || 'OPEN'
+            ]);
+        });
+
+        // Clear existing
+        await sheets.spreadsheets.values.clear({
+            spreadsheetId,
+            range: `${sheetName}!A:G`
+        });
+
+        // Update values
+        await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `${sheetName}!A1`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values }
+        });
+
+        console.log(`📊 [GDOCS] Infra Orders exported successfully to ${sheetName}!`);
+        return { success: true };
+    } catch (error) {
+        console.error('❌ [GDOCS] Failed to export Infra Orders:', error.message);
         throw error;
     }
 }

@@ -152,6 +152,18 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(excel_name, day, month, year)
     );
+
+    CREATE TABLE IF NOT EXISTS infra_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT UNIQUE NOT NULL,
+      kategori TEXT,
+      keterangan TEXT,
+      lokasi TEXT,
+      foto_path TEXT,
+      status TEXT DEFAULT 'OPEN',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migration: Add new columns if they don't exist (for existing databases)
@@ -1234,4 +1246,45 @@ export function getOpenWorkOrdersWithCoords() {
       CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 0 ELSE 1 END,
       reported_date DESC
   `).all();
+}
+
+// =========================
+// Infra Orders Management
+// =========================
+
+export function addInfraOrder(order) {
+  const stmt = db.prepare(`
+    INSERT INTO infra_orders (order_id, kategori, keterangan, lokasi, foto_path, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const now = formatToWIB();
+  const info = stmt.run(
+    order.order_id,
+    order.kategori || null,
+    order.keterangan || null,
+    order.lokasi || null,
+    order.foto_path || null,
+    order.status || 'OPEN',
+    now,
+    now
+  );
+  return { id: info.lastInsertRowid, ...order };
+}
+
+export function getOpenInfraOrders() {
+  return db.prepare("SELECT * FROM infra_orders WHERE status = 'OPEN' ORDER BY created_at ASC").all();
+}
+
+export function getClosedInfraOrders() {
+  return db.prepare("SELECT * FROM infra_orders WHERE status = 'CLOSED' ORDER BY updated_at DESC LIMIT 50").all();
+}
+
+export function getInfraOrderById(orderId) {
+  return db.prepare("SELECT * FROM infra_orders WHERE order_id = ?").get(orderId);
+}
+
+export function closeInfraOrder(orderId) {
+  const stmt = db.prepare("UPDATE infra_orders SET status = 'CLOSED', updated_at = ? WHERE order_id = ?");
+  const result = stmt.run(formatToWIB(), orderId);
+  return result.changes > 0;
 }
