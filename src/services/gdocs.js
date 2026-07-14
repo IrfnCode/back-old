@@ -955,9 +955,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
             }
         });
 
-        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
-        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SOURCE TICKET'];
-        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET'];
+        const regHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'GAUL', 'LAPUL', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET', 'GAMAS ID'];
+        const sqmHeaders = ['NO', 'NO INC', 'SERVICE NO', 'SUMMARY', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SOURCE TICKET', 'GAMAS ID'];
+        const unspecHeaders = ['NO', 'NO INC', 'SERVICE NO', 'TTR CUSTOMER', 'CUSTOMER TYPE', 'WORKZONE', 'BOOKING DATE', 'SUMMARY', 'SOURCE TICKET', 'GAMAS ID'];
         
         const regColWidth = regHeaders.length; // 11
         const sqmColWidth = sqmHeaders.length; // 8
@@ -981,9 +981,9 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
         // --- ROW 0: TITLE ROW ---
         const row0 = [];
-        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===', '', '', '', '', '', '', '', '']);
-        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '']);
-        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '']);
+        setRowCells(row0, regColStart, ['=== DATA TIKET REGULER ===', '', '', '', '', '', '', '', '', '']);
+        setRowCells(row0, sqmColStart, ['=== DATA TIKET SQM ===', '', '', '', '', '', '', '']);
+        setRowCells(row0, unspecColStart, ['=== DATA TIKET UNSPEC ===', '', '', '', '', '', '', '']);
         values.push(row0);
 
         // Add formatting requests for Title row: Merge and Style
@@ -1070,6 +1070,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                 const wz = wo.workzone || '-';
                 const bookingDate = wo.bookingDate || wo.booking_date || '-';
                 const srcTicket = wo.sourceTicket || wo.source_ticket || '-';
+                const gamasId = wo.gamasId || '-';
 
                 if (type === 'reguler') {
                     return [
@@ -1083,7 +1084,8 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         wz,
                         bookingDate,
                         summaryVal,
-                        srcTicket
+                        srcTicket,
+                        gamasId
                     ];
                 } else if (type === 'sqm') {
                     return [
@@ -1094,7 +1096,8 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         custType,
                         wz,
                         bookingDate,
-                        srcTicket
+                        srcTicket,
+                        gamasId
                     ];
                 } else {
                     return [
@@ -1106,7 +1109,8 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
                         wz,
                         bookingDate,
                         summaryVal,
-                        srcTicket
+                        srcTicket,
+                        gamasId
                     ];
                 }
             });
@@ -1195,7 +1199,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 1. Reguler Column fill
             if (regData.length === 0 && r === 0) {
-                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '', '', '']);
+                setRowCells(dataRow, regColStart, ['Tidak ada data', '', '', '', '', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, regColStart, regColWidth);
             } else if (r < regData.length) {
                 setRowCells(dataRow, regColStart, regData[r]);
@@ -1204,7 +1208,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 2. SQM Column fill
             if (sqmData.length === 0 && r === 0) {
-                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '']);
+                setRowCells(dataRow, sqmColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, sqmColStart, sqmColWidth);
             } else if (r < sqmData.length) {
                 setRowCells(dataRow, sqmColStart, sqmData[r]);
@@ -1213,7 +1217,7 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
             // 3. UNSPEC Column fill
             if (unspecData.length === 0 && r === 0) {
-                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '', '']);
+                setRowCells(dataRow, unspecColStart, ['Tidak ada data', '', '', '', '', '', '', '', '', '']);
                 addNoDataFormat(2, unspecColStart, unspecColWidth);
             } else if (r < unspecData.length) {
                 setRowCells(dataRow, unspecColStart, unspecData[r]);
@@ -1225,11 +1229,11 @@ export async function exportProactiveToSpreadsheet(spreadsheetId, sheetName, reg
 
         // --- COLUMNS DIMENSION CONFIGURATION ---
         const colWidths = [
-            45,  125, 115, 115, 115, 145, 75,  95, 135, 280, 115, // Reguler (0-10): +SUMMARY, +SOURCE TICKET
-            30,                                                    // Spacing separator (11)
-            45,  125, 115, 280, 115, 95,  135, 115,               // SQM (12-19): +SOURCE TICKET
-            30,                                                    // Spacing separator (20)
-            45,  125, 115, 115, 115, 95,  135, 280, 115           // UNSPEC (21-29): +SUMMARY, +SOURCE TICKET
+            45,  125, 115, 115, 115, 145, 75,  95, 135, 280, 115, 125, // Reguler (0-11): +GAMAS ID
+            30,                                                    // Spacing separator (12)
+            45,  125, 115, 280, 115, 95,  135, 115, 125,           // SQM (13-21): +GAMAS ID
+            30,                                                    // Spacing separator (22)
+            45,  125, 115, 115, 115, 95,  135, 280, 115, 125           // UNSPEC (23-32): +GAMAS ID
         ];
 
         colWidths.forEach((width, idx) => {

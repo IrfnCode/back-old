@@ -236,6 +236,7 @@ function parseWorkOrders(html, options = {}) {
                 if (text.includes('resolve') && text.includes('date')) columnMap.resolveDate = i;
                 if (text.includes('actual') && (text.includes('solution') || text.includes('description') || text.includes('solusi'))) columnMap.actualSolution = i;
                 if (text.includes('technician') || text.includes('petugas') || (text.includes('closed') && text.includes('by'))) columnMap.technician = i;
+                if (text.includes('gamas') && (text.includes('id') || text.includes('tiket') || text.includes('ticket'))) columnMap.gamasId = i;
             });
             console.log('📋 Column mapping:', columnMap);
         }
@@ -341,6 +342,7 @@ function parseWorkOrders(html, options = {}) {
         let resolveDate = '-';
         let actualSolution = '-';
         let technician = '-';
+        let gamasId = null;
  
         // Use column mapping if available (from header row)
         if (columnMap.bookingDate !== undefined && cells[columnMap.bookingDate]) {
@@ -391,6 +393,9 @@ function parseWorkOrders(html, options = {}) {
         }
         if (columnMap.resolveDate !== undefined && cells[columnMap.resolveDate]) {
             resolveDate = cells[columnMap.resolveDate].trim();
+        }
+        if (columnMap.gamasId !== undefined && cells[columnMap.gamasId]) {
+            gamasId = cells[columnMap.gamasId].trim();
         }
  
         for (let i = 0; i < cells.length; i++) {
@@ -470,6 +475,7 @@ function parseWorkOrders(html, options = {}) {
             resolveDate: resolveDate || '-',
             actualSolution: actualSolution || '-',
             technician: technician || '-',
+            gamasId: gamasId,
             source: 'Scraper'
         };
 
@@ -807,6 +813,10 @@ export function formatWorkOrderMessage(wo) {
 
         if (bookingDate) {
             message += `BOOKING ${esc(bookingDate)}\n`;
+        }
+
+        if (wo.gamasId) {
+            message += `GAMAS ID ${esc(wo.gamasId)}\n`;
         }
     }
 
