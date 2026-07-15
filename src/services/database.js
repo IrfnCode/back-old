@@ -161,6 +161,8 @@ export function initDatabase() {
       lokasi TEXT,
       foto_path TEXT,
       workzone TEXT,
+      close_foto_path TEXT,
+      close_keterangan TEXT,
       status TEXT DEFAULT 'OPEN',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -267,6 +269,14 @@ export function initDatabase() {
     if (!infraOrdersColumns.includes('workzone')) {
       db.exec("ALTER TABLE infra_orders ADD COLUMN workzone TEXT");
       console.log("📦 Added column to infra_orders: workzone");
+    }
+    if (!infraOrdersColumns.includes('close_foto_path')) {
+      db.exec("ALTER TABLE infra_orders ADD COLUMN close_foto_path TEXT");
+      console.log("📦 Added column to infra_orders: close_foto_path");
+    }
+    if (!infraOrdersColumns.includes('close_keterangan')) {
+      db.exec("ALTER TABLE infra_orders ADD COLUMN close_keterangan TEXT");
+      console.log("📦 Added column to infra_orders: close_keterangan");
     }
   } catch (e) {
     // Table might not exist yet, that's ok
@@ -1305,6 +1315,16 @@ export function getInfraOrderById(orderId) {
 export function closeInfraOrder(orderId) {
   const stmt = db.prepare("UPDATE infra_orders SET status = 'CLOSED', updated_at = ? WHERE order_id = ?");
   const result = stmt.run(formatToWIB(), orderId);
+  return result.changes > 0;
+}
+
+export function closeInfraOrderWithData(orderId, fotoPath, keterangan) {
+  const stmt = db.prepare(`
+    UPDATE infra_orders 
+    SET status = 'CLOSED', close_foto_path = ?, close_keterangan = ?, updated_at = ? 
+    WHERE order_id = ?
+  `);
+  const result = stmt.run(fotoPath || null, keterangan || null, formatToWIB(), orderId);
   return result.changes > 0;
 }
 

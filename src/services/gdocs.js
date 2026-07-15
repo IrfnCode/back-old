@@ -1708,7 +1708,7 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
         await ensureSheetExists(sheets, spreadsheetId, sheetName);
 
         const values = [];
-        const headers = ['ORDER ID', 'WAKTU', 'WORKZONE', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN UTAMA', 'EVIDEN LAINNYA', 'STATUS'];
+        const headers = ['ORDER ID', 'WAKTU', 'WORKZONE', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN UTAMA', 'EVIDEN LAINNYA', 'STATUS', 'WAKTU CLOSE', 'EVIDEN CLOSE', 'KETERANGAN CLOSE'];
         values.push(headers);
 
         infraOrders.forEach(order => {
@@ -1729,6 +1729,19 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
                 }
             }
 
+            let evidenClose = '-';
+            if (order.close_foto_path) {
+                const closeUrls = order.close_foto_path.split(',').filter(u => u.trim() !== '');
+                if (closeUrls.length > 0) {
+                    const firstCloseUrl = closeUrls[0];
+                    if (firstCloseUrl.startsWith('http')) {
+                        evidenClose = `=IMAGE("${firstCloseUrl}")`;
+                    } else {
+                        evidenClose = firstCloseUrl;
+                    }
+                }
+            }
+
             values.push([
                 order.order_id || '-',
                 order.created_at || '-',
@@ -1738,14 +1751,17 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
                 order.lokasi || '-',
                 evidenUtama,
                 evidenLainnya,
-                order.status || 'OPEN'
+                order.status || 'OPEN',
+                order.status === 'CLOSED' ? (order.updated_at || '-') : '-',
+                evidenClose,
+                order.close_keterangan || '-'
             ]);
         });
 
         // Clear existing
         await sheets.spreadsheets.values.clear({
             spreadsheetId,
-            range: `${sheetName}!A:I`
+            range: `${sheetName}!A:L`
         });
 
         // Update values

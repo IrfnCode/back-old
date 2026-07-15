@@ -9,6 +9,7 @@ import {
     getAllInfraOrders,
     getInfraOrderById,
     closeInfraOrder,
+    closeInfraOrderWithData,
     deleteInfraOrder
 } from './database.js';
 import { exportInfraToSpreadsheet } from './gdocs.js';
@@ -203,13 +204,20 @@ export function initInfraBot() {
             return;
         }
 
-        const success = closeInfraOrder(orderId);
-        if (success) {
-            bot.sendMessage(chatId, `🎉 Order <code>${orderId}</code> berhasil ditutup (CLOSED).`, { parse_mode: 'HTML' });
-            syncToSheets(); // Update sheets
-        } else {
-            bot.sendMessage(chatId, `❌ Gagal menutup order <code>${orderId}</code>.`, { parse_mode: 'HTML' });
-        }
+        userStates.set(chatId, {
+            step: 'WAIT_CLOSE_FOTO',
+            orderId: orderId,
+            orderData: order,
+            foto_paths: [],
+            foto_urls: []
+        });
+
+        bot.sendMessage(chatId, `ℹ️ <b>PROSES CLOSE TIKET:</b> <code>${orderId}</code>\n\n📸 Silakan <b>Kirimkan Foto Evident After (Sesudah)</b>.\n<i>(Bisa multi foto/album).</i>\n\nJika sudah selesai upload, klik tombol di bawah ini:`, {
+            parse_mode: 'HTML',
+            reply_markup: {
+                inline_keyboard: [[{ text: '✅ SELESAI UPLOAD FOTO CLOSE', callback_data: 'DONE_CLOSE_FOTO' }]]
+            }
+        });
     });
 
     bot.on('callback_query', async (query) => {
@@ -345,15 +353,20 @@ export function initInfraBot() {
                 return;
             }
             
-            const msgText = `<b>DETAIL ORDER</b>\n━━━━━━━━━━━━━━━━━━━━\n`
+            let msgText = `<b>DETAIL ORDER</b>\n━━━━━━━━━━━━━━━━━━━━\n`
                 + `🆔 <b>ID Order:</b> <code>${order.order_id}</code>\n`
                 + `📌 <b>Status:</b> ${order.status === 'OPEN' ? '📂 OPEN' : '✅ CLOSED'}\n`
                 + `🚨 <b>Kategori:</b> ${order.kategori}\n`
                 + `🏢 <b>Workzone:</b> ${order.workzone || '-'}\n`
                 + `📝 <b>Keterangan:</b> ${order.keterangan}\n`
                 + `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(order.lokasi)}">${order.lokasi}</a>\n`
-                + `🕒 <b>Dibuat:</b> ${order.created_at}\n`
-                + `━━━━━━━━━━━━━━━━━━━━`;
+                + `🕒 <b>Dibuat:</b> ${order.created_at}\n`;
+            
+            if (order.status === 'CLOSED' && order.close_keterangan) {
+                msgText += `✅ <b>Keterangan Akhir:</b> ${order.close_keterangan}\n`
+                         + `🕒 <b>Selesai:</b> ${order.updated_at}\n`;
+            }
+            msgText += `━━━━━━━━━━━━━━━━━━━━`;
 
             const opts = { parse_mode: 'HTML', disable_web_page_preview: true };
             const inlineButtons = [];
@@ -364,15 +377,27 @@ export function initInfraBot() {
             
             if (urls.length > 0) {
                 if (urls.length === 1) {
-                    bot.sendPhoto(chatId, urls[0], { caption: msgText, ...opts });
+                    await bot.sendPhoto(chatId, urls[0], { caption: msgText, ...opts });
                 } else {
                     // Send media group then the action message
-                    const mediaGroup = urls.map((u, i) => ({ type: 'photo', media: u, caption: i === 0 ? '📸 Evident Lampiran' : '' }));
+                    const mediaGroup = urls.map((u, i) => ({ type: 'photo', media: u, caption: i === 0 ? '📸 Evident Awal' : '' }));
                     await bot.sendMediaGroup(chatId, mediaGroup);
-                    bot.sendMessage(chatId, msgText, opts);
+                    await bot.sendMessage(chatId, msgText, opts);
                 }
             } else {
-                bot.sendMessage(chatId, msgText, opts);
+                await bot.sendMessage(chatId, msgText, opts);
+            }
+
+            if (order.status === 'CLOSED' && order.close_foto_path) {
+                const closeUrls = order.close_foto_path.split(',').filter(u => u.trim() !== '');
+                if (closeUrls.length > 0) {
+                    if (closeUrls.length === 1) {
+                        await bot.sendPhoto(chatId, closeUrls[0], { caption: '✅ Evident Akhir (Selesai)', ...opts });
+                    } else {
+                        const closeMediaGroup = closeUrls.map((u, i) => ({ type: 'photo', media: u, caption: i === 0 ? '✅ Evident Akhir (Selesai)' : '' }));
+                        await bot.sendMediaGroup(chatId, closeMediaGroup);
+                    }
+                }
             }
         }
         else if (data.startsWith('DEL_')) {
@@ -432,6 +457,19 @@ export function initInfraBot() {
                 state.step = 'WAIT_LOKASI';
                 bot.sendMessage(chatId, `✅ <b>${state.foto_paths.length} Foto evident tersimpan.</b>\n\n📍 Terakhir, silakan <b>Kirim Shareloc Langsung</b> melalui fitur Location Telegram, atau ketik koordinatnya (Lat, Long).`, { parse_mode: 'HTML' });
                 return; // sudah jawab, skip answerCallbackQuery di bawah
+            }
+        }
+        else if (data === 'DONE_CLOSE_FOTO') {
+            const state = userStates.get(chatId);
+            if (state && state.step === 'WAIT_CLOSE_FOTO') {
+                if (state.foto_paths.length === 0) {
+                    bot.answerCallbackQuery(query.id, { text: '⚠️ Anda belum mengirimkan satupun foto after!', show_alert: true });
+                    return;
+                }
+                bot.answerCallbackQuery(query.id, { text: `✅ ${state.foto_paths.length} foto after diterima. Lanjut ke keterangan...` });
+                state.step = 'WAIT_CLOSE_KETERANGAN';
+                bot.sendMessage(chatId, `✅ <b>${state.foto_paths.length} Foto after tersimpan.</b>\n\n📝 Terakhir, silakan ketik <b>Keterangan Akhir / Penyelesaian</b>:`, { parse_mode: 'HTML' });
+                return;
             }
         }
         else if (data.startsWith('WZ_')) {
@@ -594,6 +632,96 @@ export function initInfraBot() {
                 console.error(err);
                 bot.sendMessage(chatId, '❌ Gagal memproses foto. Silakan coba lagi.');
             }
+        }
+        else if (state.step === 'WAIT_CLOSE_FOTO') {
+            if (!msg.photo || msg.photo.length === 0) {
+                bot.sendMessage(chatId, '⚠️ <i>Harap kirimkan file berupa Foto, bukan dokumen/teks.</i>', { parse_mode: 'HTML' });
+                return;
+            }
+            // Ambil resolusi terbesar
+            const photoInfo = msg.photo[msg.photo.length - 1];
+            const fileId = photoInfo.file_id;
+            
+            try {
+                // Download lokal
+                const filePath = await bot.downloadFile(fileId, UPLOADS_DIR);
+                state.foto_paths.push(filePath);
+
+                // Upload ke catbox untuk link publik (berjalan background)
+                uploadToCatbox(filePath).then(url => {
+                    if (url) state.foto_urls.push(url);
+                });
+
+                // Konfirmasi ke user bahwa foto diterima
+                const count = state.foto_paths.length;
+                bot.sendMessage(chatId, 
+                    `📸 <b>Foto After ke-${count} diterima!</b>\n<i>Kirim foto lain jika ada, atau tekan tombol <b>SELESAI UPLOAD FOTO CLOSE</b> untuk lanjut.</i>`,
+                    { parse_mode: 'HTML' }
+                );
+            } catch (err) {
+                console.error(err);
+                bot.sendMessage(chatId, '❌ Gagal memproses foto. Silakan coba lagi.');
+            }
+        }
+        else if (state.step === 'WAIT_CLOSE_KETERANGAN') {
+            if (!msg.text) {
+                bot.sendMessage(chatId, '⚠️ <i>Harap kirimkan keterangan akhir dalam bentuk teks.</i>', { parse_mode: 'HTML' });
+                return;
+            }
+            const keteranganAkhir = msg.text;
+            const orderId = state.orderId;
+            const orderData = state.orderData;
+
+            // Beri jeda sejenak untuk memastikan upload Catbox selesai
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            const finalUrls = state.foto_urls.length > 0 ? state.foto_urls : state.foto_paths;
+            const joinedPaths = finalUrls.join(',');
+
+            const success = closeInfraOrderWithData(orderId, joinedPaths, keteranganAkhir);
+            
+            if (success) {
+                bot.sendMessage(chatId, `🎉 Order <code>${orderId}</code> berhasil ditutup (CLOSED).`, { parse_mode: 'HTML' });
+                
+                // Forward Notif Close Keren to Group
+                const targetGroupId = orderData.kategori === 'ODP TERBUKA' 
+                    ? process.env.INFRA_GROUP_ODP 
+                    : process.env.INFRA_GROUP_OTHER;
+
+                if (targetGroupId) {
+                    const caption = `🎉 <b>TICKET CLOSED Keren! (${orderData.kategori})</b>\n━━━━━━━━━━━━━━━━━━━━\n`
+                        + `🆔 <b>ID:</b> <code>${orderId}</code>\n`
+                        + `🏢 <b>Workzone:</b> ${orderData.workzone || '-'}\n`
+                        + `📝 <b>Keterangan Awal:</b> ${orderData.keterangan}\n`
+                        + `✅ <b>Keterangan Akhir:</b> ${keteranganAkhir}\n`
+                        + `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(orderData.lokasi)}">${orderData.lokasi}</a>\n`
+                        + `📌 <b>Status:</b> ✅ CLOSED\n`
+                        + `━━━━━━━━━━━━━━━━━━━━`;
+
+                    try {
+                        if (state.foto_paths.length === 1) {
+                            await bot.sendPhoto(targetGroupId, state.foto_paths[0], { caption, parse_mode: 'HTML' });
+                        } else if (state.foto_paths.length > 1) {
+                            const mediaGroup = state.foto_paths.map((p, i) => ({
+                                type: 'photo',
+                                media: p,
+                                caption: i === 0 ? caption : '',
+                                parse_mode: 'HTML'
+                            }));
+                            await bot.sendMediaGroup(targetGroupId, mediaGroup);
+                        } else {
+                            await bot.sendMessage(targetGroupId, caption, { parse_mode: 'HTML' });
+                        }
+                    } catch (err) {
+                        console.error('Failed to forward close order to group:', err.message);
+                    }
+                }
+
+                syncToSheets();
+            } else {
+                bot.sendMessage(chatId, `❌ Gagal menutup order <code>${orderId}</code>.`, { parse_mode: 'HTML' });
+            }
+            userStates.delete(chatId);
         }
         else if (state.step === 'WAIT_LOKASI') {
             let lokasi = '';
