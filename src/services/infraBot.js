@@ -476,8 +476,8 @@ export function initInfraBot() {
 
             // Forward to group
             const targetGroupId = state.category === 'ODP TERBUKA' 
-                ? process.env.INFRA_GROUP_OTHER 
-                : process.env.INFRA_GROUP_ODP;
+                ? process.env.INFRA_GROUP_ODP 
+                : process.env.INFRA_GROUP_OTHER;
 
             if (targetGroupId) {
                 const caption = `🚨 <b>NEW ORDER (${state.category})</b>\n━━━━━━━━━━━━━━━━━━━━\n`
