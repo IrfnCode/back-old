@@ -106,52 +106,69 @@ export function initInfraBot() {
         const chatId = msg.chat.id;
         const allOrders = getAllInfraOrders();
         
-        let totalOpen = 0;
-        let totalClose = 0;
+        let totalOpenMtc = 0;
+        let totalCloseMtc = 0;
+        let totalOpenSektor = 0;
+        let totalCloseSektor = 0;
         
-        // Count dictionary
-        const summary = {
-            'ODP TERBUKA': { open: 0, close: 0 },
+        const summaryMtc = {
             'PINDAH TIANG': { open: 0, close: 0 },
             'ALPRO (KU JATUH DLL)': { open: 0, close: 0 }
+        };
+        const summarySektor = {
+            'ODP TERBUKA': { open: 0, close: 0 }
         };
 
         allOrders.forEach(o => {
             const cat = o.kategori;
             const status = o.status;
             
-            // In case of unknown categories, fallback
-            if (!summary[cat]) {
-                summary[cat] = { open: 0, close: 0 };
-            }
-            
-            if (status === 'OPEN') {
-                summary[cat].open++;
-                totalOpen++;
-            } else if (status === 'CLOSED') {
-                summary[cat].close++;
-                totalClose++;
+            if (cat === 'ODP TERBUKA') {
+                if (status === 'OPEN') {
+                    summarySektor[cat].open++;
+                    totalOpenSektor++;
+                } else if (status === 'CLOSED') {
+                    summarySektor[cat].close++;
+                    totalCloseSektor++;
+                }
+            } else {
+                if (!summaryMtc[cat]) {
+                    summaryMtc[cat] = { open: 0, close: 0 };
+                }
+                if (status === 'OPEN') {
+                    summaryMtc[cat].open++;
+                    totalOpenMtc++;
+                } else if (status === 'CLOSED') {
+                    summaryMtc[cat].close++;
+                    totalCloseMtc++;
+                }
             }
         });
 
-        // Format tabel 
         const pad = (str, len) => String(str).padEnd(len, ' ');
-        let table = `KATEGORI        OPEN  CLOSE TOTAL\n`;
-        table += `---------------------------------\n`;
         
-        for (const [cat, data] of Object.entries(summary)) {
-            // Simplify category name for table width
+        let tableMtc = `🛠️ MTC REBORN (OPEN: ${totalOpenMtc}, CLOSE: ${totalCloseMtc})\n`;
+        tableMtc += `KATEGORI        OPEN  CLOSE TOTAL\n`;
+        tableMtc += `---------------------------------\n`;
+        for (const [cat, data] of Object.entries(summaryMtc)) {
             let shortCat = cat;
             if (cat === 'ALPRO (KU JATUH DLL)') shortCat = 'ALPRO';
-            
             const total = data.open + data.close;
-            table += `${pad(shortCat, 15)} ${pad(data.open, 5)} ${pad(data.close, 5)} ${total}\n`;
+            tableMtc += `${pad(shortCat, 15)} ${pad(data.open, 5)} ${pad(data.close, 5)} ${total}\n`;
         }
 
-        let text = `📊 <b>PELANTAR REPORT</b>\n`
-            + `🟢 OPEN : ${totalOpen}\n`
-            + `✅ CLOSE : ${totalClose}\n\n`
-            + `<pre>${table}</pre>`;
+        let tableSektor = `🏢 SEKTOR (OPEN: ${totalOpenSektor}, CLOSE: ${totalCloseSektor})\n`;
+        tableSektor += `KATEGORI        OPEN  CLOSE TOTAL\n`;
+        tableSektor += `---------------------------------\n`;
+        for (const [cat, data] of Object.entries(summarySektor)) {
+            let shortCat = cat;
+            const total = data.open + data.close;
+            tableSektor += `${pad(shortCat, 15)} ${pad(data.open, 5)} ${pad(data.close, 5)} ${total}\n`;
+        }
+
+        let text = `📊 <b>PELANTAR REPORT</b>\n\n`
+            + `<pre>${tableMtc}</pre>\n`
+            + `<pre>${tableSektor}</pre>`;
             
         bot.sendMessage(chatId, text, { 
             parse_mode: 'HTML',
