@@ -332,6 +332,7 @@ export function initInfraBot() {
                 + `🆔 <b>ID Order:</b> <code>${order.order_id}</code>\n`
                 + `📌 <b>Status:</b> ${order.status === 'OPEN' ? '📂 OPEN' : '✅ CLOSED'}\n`
                 + `🚨 <b>Kategori:</b> ${order.kategori}\n`
+                + `🏢 <b>Workzone:</b> ${order.workzone || '-'}\n`
                 + `📝 <b>Keterangan:</b> ${order.keterangan}\n`
                 + `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(order.lokasi)}">${order.lokasi}</a>\n`
                 + `🕒 <b>Dibuat:</b> ${order.created_at}\n`
@@ -415,6 +416,91 @@ export function initInfraBot() {
                 bot.sendMessage(chatId, `✅ <b>${state.foto_paths.length} Foto evident tersimpan.</b>\n\n📍 Terakhir, silakan <b>Kirim Shareloc Langsung</b> melalui fitur Location Telegram, atau ketik koordinatnya (Lat, Long).`, { parse_mode: 'HTML' });
                 return; // sudah jawab, skip answerCallbackQuery di bawah
             }
+        }
+        else if (data.startsWith('WZ_')) {
+            const state = userStates.get(chatId);
+            if (!state || state.step !== 'WAIT_WORKZONE') {
+                bot.answerCallbackQuery(query.id, { text: '⚠️ Sesi tidak valid atau kadaluarsa.', show_alert: true });
+                return;
+            }
+            const workzone = data.replace('WZ_', '');
+            state.workzone = workzone;
+            
+            const orderId = generateOrderId();
+            bot.answerCallbackQuery(query.id, { text: `✅ Workzone terpilih: ${workzone}` });
+            bot.editMessageText(`✅ Workzone terpilih: <b>${workzone}</b>`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                parse_mode: 'HTML'
+            });
+
+            // Beri jeda sejenak untuk memastikan semua upload Catbox selesai
+            // (Dalam skenario nyata, foto terakhir yang diupload Catbox mungkin butuh 1-2 detik)
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Jika gagal catbox, gunakan fallback lokal
+            const finalUrls = state.foto_urls.length > 0 ? state.foto_urls : state.foto_paths;
+            const joinedPaths = finalUrls.join(',');
+
+            // Save to DB
+            const orderData = {
+                order_id: orderId,
+                kategori: state.category,
+                keterangan: state.keterangan,
+                lokasi: state.lokasi,
+                workzone: state.workzone,
+                foto_path: joinedPaths
+            };
+
+            addInfraOrder(orderData);
+            
+            const successMsg = `🎉 <b>LAPORAN TERSIMPAN & DIKIRIM KE GRUP!</b>\n━━━━━━━━━━━━━━━━━━━━\n🆔 <b>ID Order:</b> <code>${orderId}</code>`;
+            bot.sendMessage(chatId, successMsg, { parse_mode: 'HTML' });
+
+            // Forward to group
+            const targetGroupId = state.category === 'ODP TERBUKA' 
+                ? process.env.INFRA_GROUP_OTHER 
+                : process.env.INFRA_GROUP_ODP;
+
+            if (targetGroupId) {
+                const caption = `🚨 <b>NEW ORDER (${state.category})</b>\n━━━━━━━━━━━━━━━━━━━━\n`
+                    + `🆔 <b>ID:</b> <code>${orderId}</code>\n`
+                    + `🏢 <b>Workzone:</b> ${state.workzone}\n`
+                    + `📝 <b>Keterangan:</b> ${state.keterangan}\n`
+                    + `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(state.lokasi)}">${state.lokasi}</a>\n`
+                    + `📌 <b>Status:</b> 📂 OPEN\n`
+                    + `━━━━━━━━━━━━━━━━━━━━`;
+
+                try {
+                    if (state.foto_paths.length === 1) {
+                        await bot.sendPhoto(targetGroupId, state.foto_paths[0], { caption, parse_mode: 'HTML' });
+                    } else if (state.foto_paths.length > 1) {
+                        const mediaGroup = state.foto_paths.map((p, i) => ({
+                            type: 'photo',
+                            media: p,
+                            caption: i === 0 ? caption : '',
+                            parse_mode: 'HTML'
+                        }));
+                        await bot.sendMediaGroup(targetGroupId, mediaGroup);
+                    }
+                    
+                    const msgLoc = state.original_msg;
+                    if (msgLoc && msgLoc.location) {
+                        await bot.sendLocation(targetGroupId, msgLoc.location.latitude, msgLoc.location.longitude);
+                    }
+                } catch (err) {
+                    console.error('Failed to forward infra order to group:', err.message);
+                }
+            } else {
+                console.log('⚠️ INFRA_GROUP_ODP or INFRA_GROUP_OTHER not set in env.');
+            }
+
+            // Sync to sheets
+            syncToSheets();
+
+            // Clear state
+            userStates.delete(chatId);
+            return;
         }
         
         bot.answerCallbackQuery(query.id);
@@ -504,71 +590,29 @@ export function initInfraBot() {
             }
 
             state.lokasi = lokasi;
-            const orderId = generateOrderId();
+            state.original_msg = msg; // simpan msg untuk forward location jika ada
+            state.step = 'WAIT_WORKZONE';
 
-            // Beri jeda sejenak untuk memastikan semua upload Catbox selesai
-            // (Dalam skenario nyata, foto terakhir yang diupload Catbox mungkin butuh 1-2 detik)
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            // Jika gagal catbox, gunakan fallback lokal
-            const finalUrls = state.foto_urls.length > 0 ? state.foto_urls : state.foto_paths;
-            const joinedPaths = finalUrls.join(',');
-
-            // Save to DB
-            const orderData = {
-                order_id: orderId,
-                kategori: state.category,
-                keterangan: state.keterangan,
-                lokasi: state.lokasi,
-                foto_path: joinedPaths
-            };
-
-            addInfraOrder(orderData);
-            
-            const successMsg = `🎉 <b>LAPORAN TERSIMPAN & DIKIRIM KE GRUP!</b>\n━━━━━━━━━━━━━━━━━━━━\n🆔 <b>ID Order:</b> <code>${orderId}</code>`;
-            bot.sendMessage(chatId, successMsg, { parse_mode: 'HTML' });
-
-            // Forward to group
-            const targetGroupId = state.category === 'ODP TERBUKA' 
-                ? process.env.INFRA_GROUP_ODP 
-                : process.env.INFRA_GROUP_OTHER;
-
-            if (targetGroupId) {
-                const caption = `🚨 <b>NEW ORDER (${state.category})</b>\n━━━━━━━━━━━━━━━━━━━━\n`
-                    + `🆔 <b>ID:</b> <code>${orderId}</code>\n`
-                    + `📝 <b>Keterangan:</b> ${state.keterangan}\n`
-                    + `📍 <b>Lokasi:</b> <a href="https://maps.google.com/?q=${encodeURIComponent(state.lokasi)}">${state.lokasi}</a>\n`
-                    + `📌 <b>Status:</b> 📂 OPEN\n`
-                    + `━━━━━━━━━━━━━━━━━━━━`;
-
-                try {
-                    if (state.foto_paths.length === 1) {
-                        await bot.sendPhoto(targetGroupId, state.foto_paths[0], { caption, parse_mode: 'HTML' });
-                    } else if (state.foto_paths.length > 1) {
-                        const mediaGroup = state.foto_paths.map((p, i) => ({
-                            type: 'photo',
-                            media: p,
-                            caption: i === 0 ? caption : '',
-                            parse_mode: 'HTML'
-                        }));
-                        await bot.sendMediaGroup(targetGroupId, mediaGroup);
-                    }
-                    
-                    if (msg.location) {
-                        await bot.sendLocation(targetGroupId, msg.location.latitude, msg.location.longitude);
-                    }
-                } catch (err) {
-                    console.error('Failed to forward infra order to group:', err.message);
+            const wzOpts = {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: 'TUB', callback_data: 'WZ_TUB' },
+                            { text: 'TPI', callback_data: 'WZ_TPI' },
+                            { text: 'PYT', callback_data: 'WZ_PYT' },
+                            { text: 'KMS', callback_data: 'WZ_KMS' }
+                        ],
+                        [
+                            { text: 'KIJ', callback_data: 'WZ_KIJ' },
+                            { text: 'DBS', callback_data: 'WZ_DBS' },
+                            { text: 'TER', callback_data: 'WZ_TER' },
+                            { text: 'RAI', callback_data: 'WZ_RAI' }
+                        ]
+                    ]
                 }
-            } else {
-                console.log('⚠️ INFRA_GROUP_ODP or INFRA_GROUP_OTHER not set in env.');
-            }
-
-            // Sync to sheets
-            syncToSheets();
-
-            // Clear state
-            userStates.delete(chatId);
+            };
+            bot.sendMessage(chatId, '✅ <b>Lokasi tersimpan.</b>\n\n🏢 Terakhir, silakan <b>Pilih WORKZONE/STO</b>:', { parse_mode: 'HTML', ...wzOpts });
+            return;
         }
     });
 }
