@@ -1708,7 +1708,7 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
         await ensureSheetExists(sheets, spreadsheetId, sheetName);
 
         const values = [];
-        const headers = ['ORDER ID', 'WAKTU', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN UTAMA', 'EVIDEN LAINNYA', 'STATUS'];
+        const headers = ['ORDER ID', 'WAKTU', 'WORKZONE', 'KATEGORI', 'KETERANGAN', 'LOKASI', 'EVIDEN UTAMA', 'EVIDEN LAINNYA', 'STATUS'];
         values.push(headers);
 
         infraOrders.forEach(order => {
@@ -1732,6 +1732,7 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
             values.push([
                 order.order_id || '-',
                 order.created_at || '-',
+                order.workzone || '-',
                 order.kategori || '-',
                 order.keterangan || '-',
                 order.lokasi || '-',
@@ -1744,7 +1745,7 @@ export async function exportInfraToSpreadsheet(spreadsheetId, infraOrders) {
         // Clear existing
         await sheets.spreadsheets.values.clear({
             spreadsheetId,
-            range: `${sheetName}!A:H`
+            range: `${sheetName}!A:I`
         });
 
         // Update values

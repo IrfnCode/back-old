@@ -160,6 +160,7 @@ export function initDatabase() {
       keterangan TEXT,
       lokasi TEXT,
       foto_path TEXT,
+      workzone TEXT,
       status TEXT DEFAULT 'OPEN',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -254,6 +255,19 @@ export function initDatabase() {
         console.log(`📦 Added column to team_members: ${col.name}`);
       }
     });
+  } catch (e) {
+    // Table might not exist yet, that's ok
+  }
+
+  // Migration for infra_orders table (add workzone)
+  try {
+    const infraOrdersInfo = db.pragma('table_info(infra_orders)');
+    const infraOrdersColumns = infraOrdersInfo.map(col => col.name);
+
+    if (!infraOrdersColumns.includes('workzone')) {
+      db.exec("ALTER TABLE infra_orders ADD COLUMN workzone TEXT");
+      console.log("📦 Added column to infra_orders: workzone");
+    }
   } catch (e) {
     // Table might not exist yet, that's ok
   }
@@ -1254,8 +1268,8 @@ export function getOpenWorkOrdersWithCoords() {
 
 export function addInfraOrder(order) {
   const stmt = db.prepare(`
-    INSERT INTO infra_orders (order_id, kategori, keterangan, lokasi, foto_path, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO infra_orders (order_id, kategori, keterangan, lokasi, foto_path, workzone, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const now = formatToWIB();
   const info = stmt.run(
@@ -1264,6 +1278,7 @@ export function addInfraOrder(order) {
     order.keterangan || null,
     order.lokasi || null,
     order.foto_path || null,
+    order.workzone || null,
     order.status || 'OPEN',
     now,
     now
