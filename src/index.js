@@ -36,6 +36,10 @@ import {
   startAutoSend,
   stopAutoSend,
   isAutoSendRunning,
+  startAutoSendSqm,
+  stopAutoSendSqm,
+  isAutoSendSqmRunning,
+  initAutoSendSqmState,
   getAllTeamMembersForMapping,
   getTodaySchedulePreview,
   clearAllSchedule
@@ -1996,6 +2000,37 @@ app.post('/api/autosend/stop', (req, res) => {
   }
 });
 
+// =========================
+// Auto-Send SQM Toggle API Routes
+// =========================
+
+app.get('/api/autosend/sqm/status', (req, res) => {
+  try {
+    const active = isAutoSendSqmRunning();
+    res.json({ active });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/autosend/sqm/on', (req, res) => {
+  try {
+    startAutoSendSqm();
+    res.json({ success: true, message: 'Auto-send SQM enabled' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/autosend/sqm/off', (req, res) => {
+  try {
+    stopAutoSendSqm();
+    res.json({ success: true, message: 'Auto-send SQM disabled, only REGULER tickets will be sent' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/telegram/broadcast/performance', async (req, res) => {
   try {
     const { date, period, chatId, tipeTicket } = req.body;
@@ -2064,6 +2099,9 @@ server.listen(PORT, '0.0.0.0', () => {
       console.log('🔄 Auto-Send was active before restart. Resuming...');
       startAutoSend();
     }
+
+    // Initialize SQM auto-send state from config
+    initAutoSendSqmState();
 
     if (config.autoScrapActive === 'true' && config.targetUrl) {
       console.log('🔄 Auto-Scrap was active before restart. Resuming...');

@@ -25,6 +25,7 @@ function getDb() {
 
 // State for auto-send
 let isAutoSendActive = false;
+let isAutoSendSqmActive = true; // SQM auto-send enabled by default
 
 export function startAutoSend() {
     isAutoSendActive = true;
@@ -38,6 +39,24 @@ export function stopAutoSend() {
     saveConfig('autoSendActive', 'false');
     console.log('🛑 Auto-send stopped');
     return true;
+}
+
+export function startAutoSendSqm() {
+    isAutoSendSqmActive = true;
+    saveConfig('autoSendSqmActive', 'true');
+    console.log('🚀 Auto-send SQM enabled');
+    return true;
+}
+
+export function stopAutoSendSqm() {
+    isAutoSendSqmActive = false;
+    saveConfig('autoSendSqmActive', 'false');
+    console.log('🛑 Auto-send SQM disabled (only REGULER will be sent)');
+    return true;
+}
+
+export function isAutoSendSqmRunning() {
+    return isAutoSendSqmActive;
 }
 
 /**
@@ -366,6 +385,17 @@ export async function sendWorkOrderWithRotation(workOrder) {
         return false;
     }
 
+    // Check if this is an SQM ticket and if SQM auto-send is disabled
+    const summary = workOrder.summary || workOrder.title || '';
+    const reportedBy = (workOrder.reportedBy || workOrder.reported_by || '').toUpperCase();
+    const sourceTicket = (workOrder.sourceTicket || workOrder.source_ticket || '').toUpperCase();
+    const isSqmTicket = summary.includes('[SQM]') || reportedBy.includes('PROACTIVE_TICKET') || sourceTicket.includes('PROACTIVE_TICKET');
+
+    if (isSqmTicket && !isAutoSendSqmActive) {
+        console.log(`Debug Auto-Send: WO ${orderId} skipped - SQM auto-send is OFF`);
+        return false;
+    }
+
     const segment = (workOrder.customer_segment || workOrder.customerSegment || '').toUpperCase();
     console.log(`Debug Auto-Send: WO ${orderId} Segment: "${segment}"`);
 
@@ -449,6 +479,13 @@ export async function sendWorkOrderWithRotation(workOrder) {
 
 export function isAutoSendRunning() {
     return isAutoSendActive;
+}
+
+export function initAutoSendSqmState() {
+    const config = getConfig();
+    // Default to true if not set
+    isAutoSendSqmActive = config.autoSendSqmActive !== 'false';
+    console.log(`📋 Auto-send SQM state: ${isAutoSendSqmActive ? 'ON' : 'OFF'}`);
 }
 
 export function getAllTeamMembersForMapping() {

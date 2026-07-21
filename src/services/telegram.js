@@ -680,6 +680,43 @@ Chat ID: <code>${chatId}</code>
     });
 
 
+    // ─────────────────────────────────────────────────────────────
+    // /autosendsqm [on|off] — Toggle SQM auto-send
+    // ─────────────────────────────────────────────────────────────
+    bot.onText(/^\/autosendsqm(?:\s+(on|off))?$/i, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const { startAutoSendSqm, stopAutoSendSqm, isAutoSendSqmRunning } = await import('./schedule.js');
+        const action = match[1] ? match[1].toLowerCase() : null;
+
+        if (!action) {
+            // Show current status
+            const isActive = isAutoSendSqmRunning();
+            const statusIcon = isActive ? '🟢' : '🔴';
+            const statusText = isActive ? 'AKTIF' : 'NONAKTIF';
+            return bot.sendMessage(chatId,
+                `${statusIcon} <b>Auto-Send SQM: ${statusText}</b>\n\n` +
+                `Gunakan:\n` +
+                `<code>/autosendsqm on</code> — Aktifkan kirim tiket SQM\n` +
+                `<code>/autosendsqm off</code> — Matikan kirim tiket SQM (hanya REGULER)\n`,
+                { parse_mode: 'HTML' });
+        }
+
+        if (action === 'on') {
+            startAutoSendSqm();
+            await bot.sendMessage(chatId,
+                `🟢 <b>Auto-Send SQM DIAKTIFKAN</b>\n\n` +
+                `Tiket SQM dan REGULER akan dikirim otomatis.`,
+                { parse_mode: 'HTML' });
+        } else {
+            stopAutoSendSqm();
+            await bot.sendMessage(chatId,
+                `🔴 <b>Auto-Send SQM DIMATIKAN</b>\n\n` +
+                `Hanya tiket REGULER yang akan dikirim otomatis.\n` +
+                `Tiket SQM akan di-skip.`,
+                { parse_mode: 'HTML' });
+        }
+    });
+
 
     bot.onText(/\/tiketaktif/, async (msg) => {
         const chatId = msg.chat.id;
