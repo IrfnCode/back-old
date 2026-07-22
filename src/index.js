@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import Database from 'better-sqlite3';
 import { initDatabase, getConfig, saveConfig, getAllWorkOrders, addWorkOrder, clearOldWorkOrders, updateWorkOrder, deleteWorkOrder, getWorkOrderById, deleteAllWorkOrders, workOrderExists, getWorkOrderByOrderId, getWorkOrdersByServiceNo, updateWorkOrderStatus, getAllTeams, getTeamById, createTeam, updateTeam, deleteTeam, addTeamMember, updateTeamMember, deleteTeamMember, getTeamMembers, getAllRekap, getRekapById, addRekap, getAllDatekRekap, getAllPsbRekap, updateRekap, deleteRekap, getAllTelegramChats, getChatByUsername, syncRekapToWorkOrders, getGroupMembers, getAllGroupMembers, clearGroupMembers, getScheduleStatuses, upsertScheduleStatus, deleteScheduleStatus, getScheduleEntriesWithStatus, getScheduleNames, getPerformanceConfig, savePerformanceConfig, getPerformanceStats, getRekapByReportedBy, getPerformanceSummary, getAllTeamMembers, getWorkersForDate, updateWorkOrderCoordinates, getOpenWorkOrdersWithCoords } from './services/database.js';
 import * as XLSX from 'xlsx';
 import { startScraping, stopScraping, scrapeOnce, formatWorkOrderMessage, calculateExpiredDate, isScrapingRunning } from './services/scraper.js';
@@ -127,20 +128,17 @@ app.post('/api/ai/query', (req, res) => {
       return res.status(403).json({ error: "Only SELECT queries are allowed." });
     }
 
-    // Execute query using the existing db instance
-    // Assuming initDatabase exported the db instance, or we can use better-sqlite3 directly here
-    // For safety, we'll re-import or use a helper if available. 
-    // Since we don't have direct access to the `db` variable from database.js here without modifying it,
-    // we'll quickly spin up a read-only connection here for AI just like the separate bridge did.
-    const Database = require('better-sqlite3');
+    // Execute query using a read-only database connection
     const dbPath = path.join(__dirname, '../data/database.sqlite');
     const aiDb = new Database(dbPath, { readonly: true });
 
-    const stmt = aiDb.prepare(sql);
-    const results = stmt.all();
-    aiDb.close();
-
-    res.json(results);
+    try {
+      const stmt = aiDb.prepare(sql);
+      const results = stmt.all();
+      res.json(results);
+    } finally {
+      aiDb.close();
+    }
   } catch (error) {
     console.error("AI Bridge Error:", error.message);
     res.status(500).json({ error: error.message });
@@ -480,20 +478,6 @@ app.post('/api/scrape/stop', (req, res) => {
   }
 });
 
-// Test Telegram message
-app.post('/api/telegram/test', async (req, res) => {
-  try {
-    const config = getConfig();
-    if (!config.telegramBotToken || !config.telegramChatId) {
-      return res.status(400).json({ error: 'Telegram not configured' });
-    }
-
-    await sendTestMessage(config.telegramChatId);
-    res.json({ success: true, message: 'Test message sent' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // SSE endpoint for real-time updates
 app.get('/api/workorders/stream', (req, res) => {

@@ -220,7 +220,6 @@ export function initDatabase() {
       { name: 'tindak_lanjut', type: 'TEXT' },
       { name: 'telegram_chat_id', type: 'TEXT' },
       { name: 'telegram_message_id', type: 'INTEGER' },
-      { name: 'telegram_message_id', type: 'INTEGER' },
       { name: 'telegram_reply_id', type: 'INTEGER' },
       { name: 'is_synced_external', type: 'INTEGER DEFAULT 0' },
       { name: 'status', type: 'TEXT' },
