@@ -1,7 +1,9 @@
+import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { rm } from 'fs/promises';
+import fs from 'fs';
 import { isLoginPage, performAutoLogin, handleTOTPPage } from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -28,24 +30,59 @@ export async function launchBrowser(url = 'about:blank') {
     try {
         console.log('🚀 Launching browser...');
 
+        let executablePath = undefined;
+        let extraArgs = [];
+
+        try {
+            if (process.platform === 'linux' || process.env.PUPPETEER_EXECUTABLE_PATH) {
+                executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || await chromium.executablePath();
+                if (chromium.args) extraArgs = chromium.args;
+                console.log(`🚀 Using @sparticuz/chromium executable path: ${executablePath}`);
+            }
+        } catch (err) {
+            console.warn('⚠️ Could not resolve @sparticuz/chromium path:', err.message);
+        }
+
+        if (!executablePath && process.platform === 'linux') {
+            const fallbackPaths = [
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/usr/bin/google-chrome-stable'
+            ];
+            for (const p of fallbackPaths) {
+                if (fs.existsSync(p)) {
+                    executablePath = p;
+                    console.log(`🚀 Found Chromium fallback at: ${p}`);
+                    break;
+                }
+            }
+        }
+
         const isHeadless = process.env.NODE_ENV === 'production' || process.platform === 'linux';
+
+        const defaultArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--disable-features=Vulkan',
+            '--disable-gpu-sandbox',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--no-zygote',
+            '--js-flags="--max-old-space-size=256"',
+            '--window-size=1280,800'
+        ];
+
+        const finalArgs = [...new Set([...defaultArgs, ...extraArgs])];
+
         browser = await puppeteer.launch({
-            headless: isHeadless ? 'shell' : false, // Run headless in production/linux to save RAM
-            userDataDir: userDataDir, // Persist session/cookies
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--disable-features=Vulkan',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-extensions',
-                '--no-zygote',
-                '--js-flags="--max-old-space-size=256"',
-                '--window-size=1280,800'
-            ],
+            headless: isHeadless ? 'shell' : false,
+            executablePath: executablePath,
+            userDataDir: userDataDir,
+            args: finalArgs,
             defaultViewport: {
                 width: 1280,
                 height: 800

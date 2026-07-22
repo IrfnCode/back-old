@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
+import chromium from '@sparticuz/chromium';
 import { getBrowserInstance, getPageInstance, getUserDataDir } from './browser.js';
 import { isLoginPage, performAutoLogin, handleTOTPPage, isLoggedIn } from './auth.js';
 import { getConfig, saveConfig, getWorkOrderById, updateWorkOrderCoordinates } from './database.js';
@@ -884,50 +885,66 @@ async function getScrapePage() {
 
         const userDataDir = getUserDataDir();
 
-        // --- PTERODACTYL FALLBACK PATHS ---
-        const fallbackPaths = [
-            process.env.PUPPETEER_EXECUTABLE_PATH,
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome-unstable',
-            '/home/container/.cache/puppeteer/chrome/linux-143.0.7499.169/chrome-linux64/chrome'
-        ];
-
         let executablePath = undefined;
-        for (const p of fallbackPaths) {
-            if (p && fs.existsSync(p)) {
-                executablePath = p;
-                console.log(`🚀 Found Chromium at: ${p}`);
-                break;
+        let extraArgs = [];
+
+        try {
+            if (process.platform === 'linux' || process.env.PUPPETEER_EXECUTABLE_PATH) {
+                executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || await chromium.executablePath();
+                if (chromium.args) extraArgs = chromium.args;
+                console.log(`🚀 Using @sparticuz/chromium executable path: ${executablePath}`);
+            }
+        } catch (err) {
+            console.warn('⚠️ Could not resolve @sparticuz/chromium path:', err.message);
+        }
+
+        if (!executablePath) {
+            const fallbackPaths = [
+                process.env.PUPPETEER_EXECUTABLE_PATH,
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/google-chrome-unstable',
+                '/home/container/.cache/puppeteer/chrome/linux-143.0.7499.169/chrome-linux64/chrome'
+            ];
+            for (const p of fallbackPaths) {
+                if (p && fs.existsSync(p)) {
+                    executablePath = p;
+                    console.log(`🚀 Found Chromium at: ${p}`);
+                    break;
+                }
             }
         }
 
         if (!executablePath) {
-            console.log('⚠️ WARNING: No system chromium found. Puppeteer will try to use the downloaded one.');
+            console.log('⚠️ WARNING: No system chromium found. Puppeteer will try to use default.');
         }
+
+        const defaultArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--disable-features=Vulkan',
+            '--disable-gpu-sandbox',
+            '--disable-software-rasterizer',
+            '--disable-widevine-cdm',
+            '--disable-component-update',
+            '--disable-bundled-ppapi-plugins',
+            '--disable-extensions',
+            '--no-zygote',
+            '--js-flags="--max-old-space-size=256"'
+        ];
+
+        const finalArgs = [...new Set([...defaultArgs, ...extraArgs])];
 
         ownBrowser = await puppeteer.launch({
             headless: 'shell',
             executablePath: executablePath,
             userDataDir: userDataDir,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--disable-features=Vulkan',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-widevine-cdm',
-                '--disable-component-update',
-                '--disable-bundled-ppapi-plugins',
-                '--disable-extensions',
-                '--no-zygote',
-                '--js-flags="--max-old-space-size=256"'
-            ],
+            args: finalArgs,
             defaultViewport: {
                 width: 1280,
                 height: 800
