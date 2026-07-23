@@ -38,18 +38,41 @@ export async function isLoginPage(page) {
       return false;
     }
     const url = page.url();
-    const content = await page.content().catch(() => "");
+
     /* javascript-obfuscator:disable */
-    const detected =
-      (url.includes("insera-sso.telkom.co.id") && (url.includes("/login") || url.includes("/jw/web/login"))) ||
-      (url.includes("/login") && (content.includes("fake-username") || content.includes('name="username"'))) ||
-      content.includes('id="pin"');
+    const detected = await page.evaluate(() => {
+      const hasFake =
+        !!document.querySelector("#fake-username") ||
+        !!document.querySelector("#fake-password") ||
+        !!document.querySelector("#j_username");
+      const hasPin = !!document.querySelector("#pin, input[name='otp'], input[id='otp']");
+      const hasPassword = !!document.querySelector('input[type="password"], input[name="password"], #password');
+      const hasUser =
+        !!document.querySelector('input[name="username"], #username, input[name="j_username"], #j_username, input[type="text"]');
+      const bodyText = (document.body && document.body.innerText ? document.body.innerText : "").toLowerCase();
+      const looksLikeLoginText =
+        (bodyText.includes("username") && bodyText.includes("password")) ||
+        bodyText.includes("sign in") ||
+        bodyText.includes("log in") ||
+        bodyText.includes("login");
+
+      // Visible login form (Joget / SSO), not just the word "login" in scripts
+      if (hasPin) return true;
+      if (hasFake) return true;
+      if (hasPassword && (hasUser || looksLikeLoginText)) return true;
+      return false;
+    });
     /* javascript-obfuscator:enable */
 
-    if (detected) {
+    const urlLooksLogin =
+      url.includes("insera-sso.telkom.co.id") &&
+      (url.includes("/login") || url.includes("/jw/web/login"));
+
+    const result = !!(detected || urlLooksLogin);
+    if (result) {
       console.log(`🔎 Login/OTP page detected. URL: ${url}`);
     }
-    return detected;
+    return result;
   } catch (error) {
     console.error("❌ Failed to detect login page:", error.message);
     return false;
@@ -61,8 +84,30 @@ export async function isLoggedIn(page) {
     if (!page || (typeof page.isClosed === "function" && page.isClosed())) {
       return false;
     }
-    const content = await page.content().catch(() => "");
-    return content.toLowerCase().includes("logout");
+
+    // Do NOT scan raw HTML for the word "logout" — Joget JS bundles often contain it
+    // even on the login page (false positive).
+    /* javascript-obfuscator:disable */
+    const loggedIn = await page.evaluate(() => {
+      const logoutEl =
+        document.querySelector('a[href*="logout" i]') ||
+        document.querySelector('a[href*="logoff" i]') ||
+        document.querySelector('[onclick*="logout" i]') ||
+        Array.from(document.querySelectorAll("a, button")).find((el) => {
+          const t = (el.textContent || "").trim().toLowerCase();
+          return t === "logout" || t === "log out" || t === "sign out";
+        });
+      if (logoutEl) return true;
+
+      // Ticket list / app chrome usually present when authenticated
+      const hasTicketTable =
+        !!document.querySelector("table tbody tr td") &&
+        /INC\d+/i.test(document.body ? document.body.innerText : "");
+      return hasTicketTable;
+    });
+    /* javascript-obfuscator:enable */
+
+    return !!loggedIn;
   } catch (error) {
     console.error("❌ Failed to check if logged in:", error.message);
     return false;
@@ -179,12 +224,27 @@ export async function performAutoLogin(page) {
     console.log("🔐 Starting auto-login...");
     console.log(`📍 Current URL: ${page.url()}`);
 
-    if (!page.url().includes("insera-sso.telkom.co.id")) {
+    // If current page already has a login form, use it.
+    // Only jump to SSO when no credentials fields are present.
+    /* javascript-obfuscator:disable */
+    const hasLoginFields = await page.evaluate(() => {
+      return !!(
+        document.querySelector("#fake-username") ||
+        document.querySelector('input[type="password"]') ||
+        document.querySelector('input[name="password"]') ||
+        document.querySelector("#j_username")
+      );
+    });
+    /* javascript-obfuscator:enable */
+
+    if (!hasLoginFields && !page.url().includes("insera-sso.telkom.co.id")) {
       console.log(`🌐 Navigating to SSO login: ${credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login"}`);
       await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
         waitUntil: "domcontentloaded",
         timeout: 60000
       });
+    } else if (hasLoginFields) {
+      console.log("📝 Login form already on current page — filling it directly");
     }
 
     const fakeUsername = await page.$("#fake-username");
@@ -231,7 +291,9 @@ export async function performAutoLogin(page) {
       /* javascript-obfuscator:enable */
     } else {
       console.log("ℹ️ Generic login form detected");
-      const username = await page.$('input[name="username"], input[id="username"], input[type="text"]');
+      const username = await page.$(
+        'input[name="username"], input[id="username"], input[name="j_username"], input[id="j_username"], input[type="text"]'
+      );
       const password = await page.$('input[name="password"], input[id="password"], input[type="password"]');
       if (!username || !password) return { success: false, message: "Login fields not found" };
 
@@ -243,7 +305,21 @@ export async function performAutoLogin(page) {
       await password.type(credentials.password, { delay: 50 });
       console.log("📤 Submitting login form...");
       await clickAndWaitNavigation(page, async () => {
-        await page.keyboard.press("Enter");
+        /* javascript-obfuscator:disable */
+        const clicked = await page.evaluate(() => {
+          const btn =
+            document.querySelector('button[type="submit"]') ||
+            document.querySelector('input[type="submit"]') ||
+            document.querySelector("#login") ||
+            document.querySelector(".login-button");
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        /* javascript-obfuscator:enable */
+        if (!clicked) await page.keyboard.press("Enter");
       });
     }
 

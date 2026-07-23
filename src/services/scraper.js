@@ -1326,9 +1326,12 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         // Wait a bit for dynamic content
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Check if we are logged in. If not (and not currently on login page), force navigation to login and login.
-        const loggedIn = await isLoggedIn(page);
-        if (!loggedIn && !(await isLoginPage(page))) {
+        // Prefer login-form detection first (isLoggedIn used to false-positive on Joget JS bundles)
+        let onLoginPage = await isLoginPage(page);
+        let loggedIn = onLoginPage ? false : await isLoggedIn(page);
+        console.log(`🔐 Session check → loggedIn=${loggedIn}, onLoginPage=${onLoginPage}, url=${page.url()}`);
+
+        if (!loggedIn && !onLoginPage) {
             console.log('🔐 Session is guest/not logged in. Navigating to login page for auto-login...');
             const { loadCredentials } = await import('./auth.js');
             const credentials = loadCredentials();
@@ -1342,10 +1345,12 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                     console.log('⚠️ Forced auto-login failed:', loginResult.message);
                 }
             }
+            onLoginPage = await isLoginPage(page);
+            loggedIn = onLoginPage ? false : await isLoggedIn(page);
         }
 
         // Check if we're on login page and auto-login if needed
-        if (await isLoginPage(page)) {
+        if (onLoginPage || await isLoginPage(page)) {
             console.log('🔐 Login page detected during scraping, attempting auto-login...');
             const loginResult = await performAutoLogin(page);
 
@@ -1368,8 +1373,8 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                 console.log(`📍 Current URL after login: ${currentUrl}`);
 
                 // If SSO didn't redirect, navigate back to target URL
-                if (await isLoginPage(page)) {
-                    console.log(`📍 Still on login page, navigating to target URL: ${targetUrl}`);
+                if (await isLoginPage(page) || !(await isLoggedIn(page))) {
+                    console.log(`📍 Navigating to target URL after login: ${targetUrl}`);
                     await safeGoto(page, targetUrl, 60000);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
