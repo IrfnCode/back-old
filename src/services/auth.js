@@ -221,30 +221,17 @@ export async function performAutoLogin(page) {
       return { success: false, message: "Page is closed" };
     }
 
-    console.log("🔐 Starting auto-login...");
+    console.log("🔐 Starting auto-login (SSO + OTP)...");
     console.log(`📍 Current URL: ${page.url()}`);
 
-    // If current page already has a login form, use it.
-    // Only jump to SSO when no credentials fields are present.
-    /* javascript-obfuscator:disable */
-    const hasLoginFields = await page.evaluate(() => {
-      return !!(
-        document.querySelector("#fake-username") ||
-        document.querySelector('input[type="password"]') ||
-        document.querySelector('input[name="password"]') ||
-        document.querySelector("#j_username")
-      );
-    });
-    /* javascript-obfuscator:enable */
-
-    if (!hasLoginFields && !page.url().includes("insera-sso.telkom.co.id")) {
-      console.log(`🌐 Navigating to SSO login: ${credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login"}`);
-      await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
+    // Always use Telkom SSO login page (do not fill Joget guest form on oss-incident)
+    if (!page.url().includes("insera-sso.telkom.co.id")) {
+      const ssoUrl = credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login";
+      console.log(`🌐 Navigating to SSO login: ${ssoUrl}`);
+      await page.goto(ssoUrl, {
         waitUntil: "domcontentloaded",
         timeout: 60000
       });
-    } else if (hasLoginFields) {
-      console.log("📝 Login form already on current page — filling it directly");
     }
 
     const fakeUsername = await page.$("#fake-username");
@@ -280,7 +267,7 @@ export async function performAutoLogin(page) {
       }, credentials.password);
       /* javascript-obfuscator:enable */
 
-      console.log("📤 Submitting login form...");
+      console.log("📤 Submitting SSO login form...");
       /* javascript-obfuscator:disable */
       await clickAndWaitNavigation(page, async () => {
         await page.evaluate(() => {
@@ -290,10 +277,8 @@ export async function performAutoLogin(page) {
       });
       /* javascript-obfuscator:enable */
     } else {
-      console.log("ℹ️ Generic login form detected");
-      const username = await page.$(
-        'input[name="username"], input[id="username"], input[name="j_username"], input[id="j_username"], input[type="text"]'
-      );
+      console.log("ℹ️ Generic SSO login form detected");
+      const username = await page.$('input[name="username"], input[id="username"], input[type="text"]');
       const password = await page.$('input[name="password"], input[id="password"], input[type="password"]');
       if (!username || !password) return { success: false, message: "Login fields not found" };
 
@@ -303,39 +288,46 @@ export async function performAutoLogin(page) {
       console.log("⌨️ Typing password...");
       await password.click({ clickCount: 3 });
       await password.type(credentials.password, { delay: 50 });
-      console.log("📤 Submitting login form...");
+      console.log("📤 Submitting SSO login form...");
       await clickAndWaitNavigation(page, async () => {
-        /* javascript-obfuscator:disable */
-        const clicked = await page.evaluate(() => {
-          const btn =
-            document.querySelector('button[type="submit"]') ||
-            document.querySelector('input[type="submit"]') ||
-            document.querySelector("#login") ||
-            document.querySelector(".login-button");
-          if (btn) {
-            btn.click();
-            return true;
-          }
-          return false;
-        });
-        /* javascript-obfuscator:enable */
-        if (!clicked) await page.keyboard.press("Enter");
+        await page.keyboard.press("Enter");
       });
     }
 
-    console.log("⏳ Waiting login response...");
-    await new Promise((r) => setTimeout(r, 1500));
-    if (await isLoginPage(page)) {
-      console.log("🔐 Still on login/OTP page, trying OTP handler...");
-      await handleTOTPPage(page);
-      await new Promise((r) => setTimeout(r, 1500));
+    // Always handle OTP/TOTP step after password submit
+    console.log("⏳ Waiting for OTP page...");
+    await new Promise((r) => setTimeout(r, 2500));
+
+    /* javascript-obfuscator:disable */
+    const needsOtp = await page.evaluate(() => {
+      return !!(
+        document.querySelector("#pin") ||
+        document.querySelector('input[name="otp"]') ||
+        document.querySelector('input[id="otp"]') ||
+        document.querySelector("#jqueryDialogFrame")
+      );
+    });
+    /* javascript-obfuscator:enable */
+
+    if (needsOtp || (await isLoginPage(page))) {
+      console.log("🔐 OTP step required — submitting TOTP...");
+      const otpResult = await handleTOTPPage(page);
+      if (!otpResult.success) {
+        console.warn(`⚠️ OTP submit issue: ${otpResult.message}`);
+      }
+      await new Promise((r) => setTimeout(r, 2500));
+    } else {
+      console.log("ℹ️ No OTP field detected after password submit");
     }
 
     const stillLogin = await isLoginPage(page);
-    console.log(`📍 URL after login flow: ${page.url()}`);
-    return stillLogin
-      ? { success: false, message: "Still on login page" }
-      : { success: true, message: "Login successful" };
+    const loggedIn = stillLogin ? false : await isLoggedIn(page);
+    console.log(`📍 URL after login+OTP flow: ${page.url()} | loggedIn=${loggedIn}`);
+
+    if (loggedIn || !stillLogin) {
+      return { success: true, message: "Login successful" };
+    }
+    return { success: false, message: "Still on login/OTP page" };
   } catch (error) {
     console.error("❌ Auto-login failed:", error.message);
     return { success: false, message: error.message };
