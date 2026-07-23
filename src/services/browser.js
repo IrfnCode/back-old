@@ -64,7 +64,7 @@ export async function launchBrowser(url = 'about:blank') {
 
         // Navigate to URL if provided
         if (url && url !== 'about:blank') {
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             // Check if we landed on login page and auto-login if enabled
             if (autoLoginEnabled && await isLoginPage(page)) {
@@ -126,7 +126,7 @@ export async function navigate(url) {
     }
 
     try {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         // Check if we landed on login page and auto-login if enabled
         if (autoLoginEnabled && await isLoginPage(page)) {

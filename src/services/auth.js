@@ -74,7 +74,7 @@ export async function isLoggedIn(page) {
  */
 async function clickAndWaitNavigation(page, actionFn, timeout = 60000) {
   await Promise.all([
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout }).catch((err) => {
+    page.waitForNavigation({ waitUntil: "domcontentloaded", timeout }).catch((err) => {
       console.warn(`⚠️ waitForNavigation ended: ${err.message}`);
     }),
     actionFn()
@@ -182,7 +182,7 @@ export async function performAutoLogin(page) {
     if (!page.url().includes("insera-sso.telkom.co.id")) {
       console.log(`🌐 Navigating to SSO login: ${credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login"}`);
       await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
-        waitUntil: "networkidle2",
+        waitUntil: "domcontentloaded",
         timeout: 60000
       });
     }

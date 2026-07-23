@@ -52,9 +52,32 @@ async function executeWithRetry(fn, retries = 3, delayMs = 5000) {
 }
 
 /**
- * Safe navigation that handles detached frames / closed targets / timeouts
+ * True if navigation landed on a usable page even when waitUntil timed out
  */
-async function safeGoto(page, url, timeout = 60000) {
+async function pageHasUsableContent(page) {
+    try {
+        if (!page || (typeof page.isClosed === 'function' && page.isClosed())) return false;
+        const current = page.url();
+        if (!current || current === 'about:blank' || current.startsWith('chrome-error://')) return false;
+        const html = await page.content().catch(() => '');
+        return (
+            html.length > 800 ||
+            current.includes('telkom.co.id') ||
+            current.includes('/login') ||
+            html.includes('INC') ||
+            html.includes('fake-username') ||
+            html.includes('logout')
+        );
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Safe navigation for Insera/SSO.
+ * Avoid networkidle2 — Insera keeps polling so it often never becomes idle on VPS/Pterodactyl.
+ */
+async function safeGoto(page, url, timeout = 90000) {
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -64,18 +87,38 @@ async function safeGoto(page, url, timeout = 60000) {
             }
 
             await page.goto(url, {
-                waitUntil: 'networkidle2',
+                waitUntil: 'domcontentloaded',
                 timeout
             });
+
+            // Give Joget tables / login form a short window to appear (non-fatal)
+            await Promise.race([
+                page.waitForSelector(
+                    'table tbody tr, #fake-username, input[name="username"], #pin, a[href*="logout"]',
+                    { timeout: 20000 }
+                ).catch(() => null),
+                new Promise(r => setTimeout(r, 8000))
+            ]);
+
             return true;
         } catch (err) {
+            const msg = err.message || '';
+
+            // Timeout but document already partially loaded → continue scraping
+            if (msg.includes('Navigation timeout') || msg.includes('timeout')) {
+                if (await pageHasUsableContent(page)) {
+                    console.warn(`[Scraper] safeGoto timed out but page has content, proceeding: ${page.url()}`);
+                    return true;
+                }
+            }
+
             if (isRetriableNavError(err) && attempt < maxAttempts) {
-                console.warn(`[Scraper] safeGoto attempt ${attempt} failed on ${url}: ${err.message}, retrying...`);
+                console.warn(`[Scraper] safeGoto attempt ${attempt} failed on ${url}: ${msg}, retrying...`);
                 await new Promise(r => setTimeout(r, 2000 * attempt));
                 continue;
             }
             if (isRetriableNavError(err)) {
-                console.warn(`[Scraper] safeGoto giving up on ${url}: ${err.message}`);
+                console.warn(`[Scraper] safeGoto giving up on ${url}: ${msg}`);
                 return false;
             }
             throw err;
@@ -941,6 +984,59 @@ async function openIsolatedPage(browser) {
 }
 
 /**
+ * Resolve Chromium/Chrome binary for Pterodactyl / Linux containers
+ */
+function resolveChromiumExecutable() {
+    const candidates = [
+        process.env.PUPPETEER_EXECUTABLE_PATH,
+        process.env.CHROME_BIN,
+        process.env.CHROME_PATH,
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome-unstable'
+    ].filter(Boolean);
+
+    // Scan Puppeteer download cache (version folder changes over time)
+    const cacheRoots = [
+        path.join(process.env.HOME || '/home/container', '.cache', 'puppeteer', 'chrome'),
+        '/home/container/.cache/puppeteer/chrome',
+        path.join(process.cwd(), 'node_modules', 'puppeteer', '.local-chromium')
+    ];
+
+    for (const root of cacheRoots) {
+        try {
+            if (!fs.existsSync(root)) continue;
+            const versions = fs.readdirSync(root);
+            for (const version of versions) {
+                candidates.push(
+                    path.join(root, version, 'chrome-linux64', 'chrome'),
+                    path.join(root, version, 'chrome-linux', 'chrome')
+                );
+            }
+        } catch {
+            // ignore scan errors
+        }
+    }
+
+    // Puppeteer's own resolved path (bundled browser)
+    try {
+        const bundled = puppeteer.executablePath();
+        if (bundled) candidates.push(bundled);
+    } catch {
+        // ignore
+    }
+
+    for (const p of candidates) {
+        if (p && fs.existsSync(p)) {
+            return p;
+        }
+    }
+    return undefined;
+}
+
+/**
  * Get a page for scraping - prefers isolated tab/context.
  * Never shares the monitor's active page (avoids detached frame / premature close races).
  */
@@ -957,17 +1053,8 @@ async function getScrapePage() {
         }
     }
 
-    // WARNING: Browser monitor is not running / unavailable
-    console.log('');
-    console.log('⚠️ ============================================');
-    console.log('⚠️  BROWSER MONITOR TIDAK AKTIF!');
-    console.log('⚠️  Untuk scraping website dengan login:');
-    console.log('⚠️  1. Buka Browser Monitor di halaman Scraper');
-    console.log('⚠️  2. Login di browser tersebut');
-    console.log('⚠️  3. BIARKAN BROWSER TETAP TERBUKA');
-    console.log('⚠️  4. Baru klik Run Scraper');
-    console.log('⚠️ ============================================');
-    console.log('');
+    // On Pterodactyl, headless mode is normal (no Browser Monitor UI)
+    console.log('ℹ️ Browser monitor tidak aktif — memakai headless browser + saved cookies/session.');
 
     // If ownBrowser is disconnected, clear it to force relaunch
     if (ownBrowser && !ownBrowser.isConnected()) {
@@ -984,29 +1071,12 @@ async function getScrapePage() {
         console.log('🌐 Creating headless browser with saved session...');
 
         const userDataDir = getUserDataDir();
+        const executablePath = resolveChromiumExecutable();
 
-        // --- PTERODACTYL FALLBACK PATHS ---
-        const fallbackPaths = [
-            process.env.PUPPETEER_EXECUTABLE_PATH,
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome-unstable',
-            '/home/container/.cache/puppeteer/chrome/linux-143.0.7499.169/chrome-linux64/chrome'
-        ];
-
-        let executablePath = undefined;
-        for (const p of fallbackPaths) {
-            if (p && fs.existsSync(p)) {
-                executablePath = p;
-                console.log(`🚀 Found Chromium at: ${p}`);
-                break;
-            }
-        }
-
-        if (!executablePath) {
-            console.log('⚠️ WARNING: No system chromium found. Puppeteer will try to use the downloaded one.');
+        if (executablePath) {
+            console.log(`🚀 Found Chromium at: ${executablePath}`);
+        } else {
+            console.log('⚠️ WARNING: No chromium binary resolved. Puppeteer will try its default.');
         }
 
         ownBrowser = await puppeteer.launch({
@@ -1466,7 +1536,7 @@ export async function scrapeSingleTicket(orderId) {
         // Type to ensure events trigger, then Enter
         await page.type('input[placeholder*="Find Incident"]', orderId);
         await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {}),
             page.keyboard.press('Enter')
         ]);
 
@@ -1493,7 +1563,7 @@ export async function scrapeSingleTicket(orderId) {
                     // Use evaluate click to be robust against "Node not clickable"
                     /* javascript-obfuscator:disable */
                     await Promise.all([
-                        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+                        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {}),
                         page.evaluate((el) => el.click(), link)
                     ]);
                     /* javascript-obfuscator:enable */
