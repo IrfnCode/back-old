@@ -2,8 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
-import chromium from '@sparticuz/chromium';
-import { getBrowserInstance, getPageInstance, getUserDataDir } from './browser.js';
+import { getBrowserInstance, getUserDataDir } from './browser.js';
 import { isLoginPage, performAutoLogin, handleTOTPPage, isLoggedIn } from './auth.js';
 import { getConfig, saveConfig, getWorkOrderById, updateWorkOrderCoordinates } from './database.js';
 import { formatToWIB, getWIBDate } from '../utils/time.js';
@@ -13,15 +12,101 @@ let isScrapingActive = false;
 let isScrapingNow = false;
 let ownBrowser = null;
 let ownPage = null;
+let ownBrowserRefCount = 0;
 let scrapSheetInterval = null;
 let scrapSheetIntervalMs = 0;
 let scrapSheetStartedAt = null;
 
+function isRetriableNavError(err) {
+    const msg = (err && err.message) ? err.message : String(err || '');
+    return (
+        msg.includes('detached Frame') ||
+        msg.includes('detached frame') ||
+        msg.includes('Target closed') ||
+        msg.includes('Session closed') ||
+        msg.includes('Navigating frame was detached') ||
+        msg.includes('Execution context was destroyed') ||
+        msg.includes('ERR_CONNECTION_TIMED_OUT') ||
+        msg.includes('Navigation timeout') ||
+        msg.includes('net::ERR_') ||
+        msg.includes('timeout')
+    );
+}
+
+/**
+ * Retry wrapper with exponential backoff (for SSO/Insera timeouts & flaky nav)
+ */
+async function executeWithRetry(fn, retries = 3, delayMs = 5000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (error) {
+            const retriable = isRetriableNavError(error);
+            console.error(`⚠️ Attempt ${i + 1}/${retries} failed: ${error.message}`);
+            if (!retriable || i === retries - 1) throw error;
+            const wait = delayMs * Math.pow(2, i);
+            console.log(`⏳ Retrying in ${wait / 1000}s...`);
+            await new Promise(res => setTimeout(res, wait));
+        }
+    }
+}
+
+/**
+ * Safe navigation that handles detached frames / closed targets / timeouts
+ */
 async function safeGoto(page, url, timeout = 60000) {
-    try {
-        await page.goto(url, { waitUntil: 'load', timeout });
-    } catch (e) {
-        console.log(`⚠️ [Scraper] safeGoto warning: ${e.message} for ${url}. Proceeding...`);
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+                console.warn(`[Scraper] safeGoto: page is closed for ${url}`);
+                return false;
+            }
+
+            await page.goto(url, {
+                waitUntil: 'networkidle2',
+                timeout
+            });
+            return true;
+        } catch (err) {
+            if (isRetriableNavError(err) && attempt < maxAttempts) {
+                console.warn(`[Scraper] safeGoto attempt ${attempt} failed on ${url}: ${err.message}, retrying...`);
+                await new Promise(r => setTimeout(r, 2000 * attempt));
+                continue;
+            }
+            if (isRetriableNavError(err)) {
+                console.warn(`[Scraper] safeGoto giving up on ${url}: ${err.message}`);
+                return false;
+            }
+            throw err;
+        }
+    }
+    return false;
+}
+
+/**
+ * Release a scrape page/context and only close ownBrowser when unused
+ */
+async function releaseScrapeResources(scrapePage, { isShared = true, context = null, fromOwnBrowser = false } = {}) {
+    if (scrapePage) {
+        await saveCookies(scrapePage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
+    }
+
+    if (scrapePage && !isShared) {
+        console.log('♻️ Closing temporary scrape tab...');
+        await scrapePage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
+    }
+
+    if (context) {
+        await context.close().catch(() => {});
+    }
+
+    if (fromOwnBrowser) {
+        ownBrowserRefCount = Math.max(0, ownBrowserRefCount - 1);
+        if (ownBrowserRefCount === 0 && ownBrowser) {
+            console.log('♻️ Closing headless browser (no active scrape refs)...');
+            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
+        }
     }
 }
 
@@ -534,7 +619,11 @@ async function scrapeTicketDetails(page, uuid, orderId) {
         const baseUrl = currentUrl.split('?')[0];
         const detailUrl = `${baseUrl}?_mode=edit&id=${uuid}`;
 
-        await page.goto(detailUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        const detailOk = await safeGoto(page, detailUrl, 60000);
+        if (!detailOk) {
+            console.warn(`⚠️ Could not open detail page for ${orderId}`);
+            return null;
+        }
 
         // Wait for tabs to load
         // Selector for "Customer Information" tab.
@@ -825,40 +914,50 @@ export function formatWorkOrderMessage(wo) {
 }
 
 /**
- * Get a page for scraping - uses browser monitor's page if running,
- * otherwise creates a new headless browser with saved session
+ * Configure a scrape page: viewport, cookies, block heavy assets
+ */
+async function prepareScrapePage(page) {
+    await page.setViewport({ width: 1366, height: 768 });
+    await restoreCookies(page).catch(() => {});
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+        if (['image', 'font', 'media'].includes(req.resourceType())) {
+            req.abort();
+        } else {
+            req.continue();
+        }
+    });
+}
+
+/**
+ * Open a dedicated tab for scraping.
+ * Uses default browser context so cookies/session from userDataDir are shared.
+ * (Closing this page never closes other tabs; only browser.close() does.)
+ */
+async function openIsolatedPage(browser) {
+    const page = await browser.newPage();
+    await prepareScrapePage(page);
+    return { page, context: null };
+}
+
+/**
+ * Get a page for scraping - prefers isolated tab/context.
+ * Never shares the monitor's active page (avoids detached frame / premature close races).
  */
 async function getScrapePage() {
-    // 1. Try to open a new tab in the active browser monitor instance
+    // 1. Try isolated context/tab in the active browser monitor instance
     const monitorBrowser = getBrowserInstance();
     if (monitorBrowser && monitorBrowser.isConnected()) {
-        console.log('📡 Opening a new tab in the active browser monitor...');
+        console.log('📡 Opening isolated tab/context in the active browser monitor...');
         try {
-            const newPage = await monitorBrowser.newPage();
-            await newPage.setViewport({ width: 1366, height: 768 });
-            await restoreCookies(newPage).catch(() => {});
-            await newPage.setRequestInterception(true);
-            newPage.on('request', (req) => {
-                if (['image', 'font', 'media'].includes(req.resourceType())) {
-                    req.abort();
-                } else {
-                    req.continue();
-                }
-            });
-            return { page: newPage, isShared: false };
+            const { page, context } = await openIsolatedPage(monitorBrowser);
+            return { page, isShared: false, context, fromOwnBrowser: false };
         } catch (e) {
-            console.log('⚠️ Failed to open new tab in browser monitor, falling back to shared page:', e.message);
+            console.log('⚠️ Failed to open isolated tab in browser monitor, falling back to headless:', e.message);
         }
     }
 
-    // Fallback: try to use the browser monitor's active page (already logged in)
-    const monitorPage = getPageInstance();
-    if (monitorPage) {
-        console.log('📡 Using active browser monitor session (GOOD!)');
-        return { page: monitorPage, isShared: true };
-    }
-
-    // WARNING: Browser monitor is not running!
+    // WARNING: Browser monitor is not running / unavailable
     console.log('');
     console.log('⚠️ ============================================');
     console.log('⚠️  BROWSER MONITOR TIDAK AKTIF!');
@@ -877,74 +976,59 @@ async function getScrapePage() {
             await ownBrowser.close();
         } catch (e) {}
         ownBrowser = null;
+        ownBrowserRefCount = 0;
     }
 
-    // 2. If browser monitor is not running, create own headless browser
+    // 2. Create/reuse own headless browser
     if (!ownBrowser) {
         console.log('🌐 Creating headless browser with saved session...');
 
         const userDataDir = getUserDataDir();
 
-        let executablePath = undefined;
-        let extraArgs = [];
-
-        try {
-            if (process.platform === 'linux' || process.env.PUPPETEER_EXECUTABLE_PATH) {
-                executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || await chromium.executablePath();
-                if (chromium.args) extraArgs = chromium.args;
-                console.log(`🚀 Using @sparticuz/chromium executable path: ${executablePath}`);
-            }
-        } catch (err) {
-            console.warn('⚠️ Could not resolve @sparticuz/chromium path:', err.message);
-        }
-
-        if (!executablePath) {
-            const fallbackPaths = [
-                process.env.PUPPETEER_EXECUTABLE_PATH,
-                '/usr/bin/google-chrome',
-                '/usr/bin/chromium-browser',
-                '/usr/bin/chromium',
-                '/usr/bin/google-chrome-stable',
-                '/usr/bin/google-chrome-unstable',
-                '/home/container/.cache/puppeteer/chrome/linux-143.0.7499.169/chrome-linux64/chrome'
-            ];
-            for (const p of fallbackPaths) {
-                if (p && fs.existsSync(p)) {
-                    executablePath = p;
-                    console.log(`🚀 Found Chromium at: ${p}`);
-                    break;
-                }
-            }
-        }
-
-        if (!executablePath) {
-            console.log('⚠️ WARNING: No system chromium found. Puppeteer will try to use default.');
-        }
-
-        const defaultArgs = [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu',
-            '--disable-features=Vulkan',
-            '--disable-gpu-sandbox',
-            '--disable-software-rasterizer',
-            '--disable-widevine-cdm',
-            '--disable-component-update',
-            '--disable-bundled-ppapi-plugins',
-            '--disable-extensions',
-            '--no-zygote',
-            '--js-flags="--max-old-space-size=256"'
+        // --- PTERODACTYL FALLBACK PATHS ---
+        const fallbackPaths = [
+            process.env.PUPPETEER_EXECUTABLE_PATH,
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/usr/bin/google-chrome-stable',
+            '/usr/bin/google-chrome-unstable',
+            '/home/container/.cache/puppeteer/chrome/linux-143.0.7499.169/chrome-linux64/chrome'
         ];
 
-        const finalArgs = [...new Set([...defaultArgs, ...extraArgs])];
+        let executablePath = undefined;
+        for (const p of fallbackPaths) {
+            if (p && fs.existsSync(p)) {
+                executablePath = p;
+                console.log(`🚀 Found Chromium at: ${p}`);
+                break;
+            }
+        }
+
+        if (!executablePath) {
+            console.log('⚠️ WARNING: No system chromium found. Puppeteer will try to use the downloaded one.');
+        }
 
         ownBrowser = await puppeteer.launch({
             headless: 'shell',
             executablePath: executablePath,
             userDataDir: userDataDir,
-            args: finalArgs,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--disable-features=Vulkan',
+                '--disable-gpu-sandbox',
+                '--disable-software-rasterizer',
+                '--disable-widevine-cdm',
+                '--disable-component-update',
+                '--disable-bundled-ppapi-plugins',
+                '--disable-extensions',
+                '--no-zygote',
+                '--js-flags="--max-old-space-size=256"'
+            ],
             defaultViewport: {
                 width: 1280,
                 height: 800
@@ -953,18 +1037,9 @@ async function getScrapePage() {
         console.log('✅ Headless browser ready');
     }
 
-    // Always create a new tab in ownBrowser so that it can be closed by the caller safely!
-    const newPage = await ownBrowser.newPage();
-    await restoreCookies(newPage).catch(() => {});
-    await newPage.setRequestInterception(true);
-    newPage.on('request', (req) => {
-        if (['image', 'font', 'media'].includes(req.resourceType())) {
-            req.abort();
-        } else {
-            req.continue();
-        }
-    });
-    return { page: newPage, isShared: false };
+    const { page, context } = await openIsolatedPage(ownBrowser);
+    ownBrowserRefCount += 1;
+    return { page, isShared: false, context, fromOwnBrowser: true };
 }
 
 /**
@@ -972,9 +1047,10 @@ async function getScrapePage() {
  */
 async function closeOwnBrowser() {
     if (ownBrowser) {
-        await ownBrowser.close();
+        await ownBrowser.close().catch(() => {});
         ownBrowser = null;
         ownPage = null;
+        ownBrowserRefCount = 0;
         console.log('🛑 Headless browser closed');
     }
 }
@@ -987,7 +1063,10 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
     isScrapingNow = true;
     let scrapePage = null;
     let shouldCloseTab = false;
+    let scrapeContext = null;
+    let fromOwnBrowser = false;
     try {
+        return await executeWithRetry(async () => {
         // --- CONSTRUCT URL WITH FILTERS ---
         // 1. Get filter config
         const config = getConfig();
@@ -1107,19 +1186,29 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
 
         console.log(`🔍 Scraping: ${targetUrl}`);
 
-        const { page, isShared } = await getScrapePage();
+        // Release previous attempt resources before opening a fresh page (retry safety)
+        if (scrapePage || scrapeContext) {
+            await releaseScrapeResources(scrapePage, {
+                isShared: !shouldCloseTab,
+                context: scrapeContext,
+                fromOwnBrowser
+            });
+            scrapePage = null;
+            scrapeContext = null;
+            shouldCloseTab = false;
+            fromOwnBrowser = false;
+        }
+
+        const { page, isShared, context, fromOwnBrowser: ownFlag } = await getScrapePage();
 
         scrapePage = page;
         shouldCloseTab = !isShared;
+        scrapeContext = context || null;
+        fromOwnBrowser = !!ownFlag;
 
-        if (isShared) {
-            // Use the same page but save current URL
-            const currentUrl = page.url();
-            console.log(`📍 Current browser URL: ${currentUrl}`);
-            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-            // Note: This will change the browser monitor view temporarily
-        } else {
-            await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        const navigated = await safeGoto(page, targetUrl, 60000);
+        if (!navigated) {
+            throw new Error(`Failed to navigate to ${targetUrl}`);
         }
 
         // Wait a bit for dynamic content
@@ -1132,14 +1221,11 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
             const { loadCredentials } = await import('./auth.js');
             const credentials = loadCredentials();
             if (credentials) {
-                await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
-                    waitUntil: 'networkidle2',
-                    timeout: 45000
-                });
+                await safeGoto(page, credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", 60000);
                 const loginResult = await performAutoLogin(page);
                 if (loginResult.success) {
                     console.log('✅ Auto-login successful! Returning to target URL...');
-                    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                    await safeGoto(page, targetUrl, 60000);
                 } else {
                     console.log('⚠️ Forced auto-login failed:', loginResult.message);
                 }
@@ -1172,7 +1258,7 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
                 // If SSO didn't redirect, navigate back to target URL
                 if (await isLoginPage(page)) {
                     console.log(`📍 Still on login page, navigating to target URL: ${targetUrl}`);
-                    await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+                    await safeGoto(page, targetUrl, 60000);
                     await new Promise(resolve => setTimeout(resolve, 2000));
                 }
             } else {
@@ -1182,6 +1268,9 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
         }
 
         // Get page HTML
+        if (page.isClosed()) {
+            throw new Error('Page closed before content could be read (detached/session closed)');
+        }
         const html = await page.content();
 
         // DEBUG: Count tables and rows
@@ -1243,22 +1332,17 @@ export async function scrapeOnce(baseUrl, onNewWorkOrder, options = {}) {
             timestamp: formatToWIB(),
             data: workOrders
         };
+        }, 3, 5000);
     } catch (error) {
         console.error('❌ Scraping error:', error.message);
         throw error;
     } finally {
         isScrapingNow = false;
-        if (scrapePage) {
-            await saveCookies(scrapePage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
-        }
-        if (shouldCloseTab && scrapePage) {
-            console.log('♻️ Closing temporary tab for scrapeOnce...');
-            await scrapePage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
-        }
-        if (ownBrowser) {
-            console.log('♻️ Closing headless browser for scrapeOnce to free VPS RAM...');
-            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
-        }
+        await releaseScrapeResources(scrapePage, {
+            isShared: !shouldCloseTab,
+            context: scrapeContext,
+            fromOwnBrowser
+        });
     }
 }
 
@@ -1336,13 +1420,17 @@ export function isScrapingRunning() {
 export async function scrapeSingleTicket(orderId) {
     let scrapedPage = null;
     let isPageShared = true;
+    let scrapeContext = null;
+    let fromOwnBrowser = false;
     try {
         console.log(`🔎 [Manual Scrape] Searching for ${orderId} via Search Bar...`);
 
         // 1. Get browser page
-        const { page, isShared } = await getScrapePage();
+        const { page, isShared, context, fromOwnBrowser: ownFlag } = await getScrapePage();
         scrapedPage = page;
         isPageShared = isShared;
+        scrapeContext = context || null;
+        fromOwnBrowser = !!ownFlag;
 
         // Ensure we are on the dashboard/base URL first or at least have the nav bar
         const config = getConfig();
@@ -1377,7 +1465,10 @@ export async function scrapeSingleTicket(orderId) {
 
         // Type to ensure events trigger, then Enter
         await page.type('input[placeholder*="Find Incident"]', orderId);
-        await page.keyboard.press('Enter');
+        await Promise.all([
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+            page.keyboard.press('Enter')
+        ]);
 
         console.log(`⏳ Searching for ${orderId}...`);
 
@@ -1401,11 +1492,11 @@ export async function scrapeSingleTicket(orderId) {
                     console.log('📂 Found ticket in list, clicking to view details...');
                     // Use evaluate click to be robust against "Node not clickable"
                     /* javascript-obfuscator:disable */
-                    await page.evaluate((el) => el.click(), link);
+                    await Promise.all([
+                        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+                        page.evaluate((el) => el.click(), link)
+                    ]);
                     /* javascript-obfuscator:enable */
-
-
-                    await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
                     // Now we should be on detail page
                     const newUrl = page.url();
@@ -1461,14 +1552,7 @@ export async function scrapeSingleTicket(orderId) {
         console.error(`❌ [Manual Scrape] Error for ${orderId}:`, error.message);
         throw error;
     } finally {
-        if (scrapedPage && !isPageShared) {
-            console.log('♻️ Closing temporary tab for manual scrape...');
-            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
-        }
-        if (ownBrowser) {
-            console.log('♻️ Closing headless browser for manual scrape to free VPS RAM...');
-            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
-        }
+        await releaseScrapeResources(scrapedPage, { isShared: isPageShared, context: scrapeContext, fromOwnBrowser });
     }
 }
 
@@ -1477,18 +1561,27 @@ export async function scrapeSingleTicket(orderId) {
  * Prevents overlapping with other scraper runs using isScrapingNow.
  */
 export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl) {
+    if (isScrapingNow) {
+        throw new Error("Scraping Insera sedang berjalan, silakan coba beberapa saat lagi.");
+    }
+    isScrapingNow = true;
     let scrapedPage = null;
     let isPageShared = true;
+    let scrapeContext = null;
+    let fromOwnBrowser = false;
     try {
         console.log('🔍 [Scraper] Starting proactive & reguler scraping process...');
 
-        const { page, isShared } = await getScrapePage();
+        const { page, isShared, context, fromOwnBrowser: ownFlag } = await getScrapePage();
         scrapedPage = page;
         isPageShared = isShared;
+        scrapeContext = context || null;
+        fromOwnBrowser = !!ownFlag;
 
         // --- 1. SCRAPE REGULER TICKETS ---
         console.log(`🔍 [Scraper] Navigating to Reguler URL: ${regulerBaseUrl}`);
-        await safeGoto(page, regulerBaseUrl, 60000);
+        const navReg = await safeGoto(page, regulerBaseUrl, 60000);
+        if (!navReg) throw new Error(`Failed to navigate to reguler URL: ${regulerBaseUrl}`);
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Auto login if guest
@@ -1498,7 +1591,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             const { loadCredentials } = await import('./auth.js');
             const credentials = loadCredentials();
             if (credentials) {
-                await safeGoto(page, credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", 45000);
+                await safeGoto(page, credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", 60000);
                 const loginResult = await performAutoLogin(page);
                 if (loginResult.success) {
                     await safeGoto(page, regulerBaseUrl, 60000);
@@ -1516,6 +1609,9 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             }
         }
 
+        if (page.isClosed()) {
+            throw new Error('Page closed while scraping reguler tickets');
+        }
         const htmlReg1 = await page.content();
         let regulerTickets = parseWorkOrders(htmlReg1);
         console.log(`📋 [Scraper] Found ${regulerTickets.length} reguler tickets on page 1`);
@@ -1525,7 +1621,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             try {
                 const regulerUrlP2 = regulerBaseUrl.replace('d-5564009-p=1', 'd-5564009-p=2');
                 console.log(`📋 [Scraper] Reguler Page 1 full, navigating to Page 2: ${regulerUrlP2}`);
-                await safeGoto(page, regulerUrlP2, 45000);
+                await safeGoto(page, regulerUrlP2, 60000);
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 const htmlReg2 = await page.content();
                 const regulerTicketsP2 = parseWorkOrders(htmlReg2);
@@ -1559,7 +1655,8 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
                 .replace(/d-6878233-ps=\d+/, 'd-6878233-ps=100');
 
             console.log(`🔍 [Scraper] Navigating to Proactive URL Page ${pageNum}: ${paginatedProactiveUrl}`);
-            await safeGoto(page, paginatedProactiveUrl, 60000);
+            const navPro = await safeGoto(page, paginatedProactiveUrl, 60000);
+            if (!navPro) throw new Error(`Failed to navigate to proactive URL page ${pageNum}`);
             await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Check login just in case
@@ -1571,6 +1668,9 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
                 }
             }
 
+            if (page.isClosed()) {
+                throw new Error(`Page closed while scraping proactive page ${pageNum}`);
+            }
             const htmlProactive = await page.content();
             const pageTickets = parseWorkOrders(htmlProactive);
             console.log(`📋 [Scraper] Found ${pageTickets.length} proactive tickets on page ${pageNum}`);
@@ -1616,29 +1716,25 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
         };
 
     } finally {
-        if (scrapedPage) {
-            await saveCookies(scrapedPage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
-        }
-        if (scrapedPage && !isPageShared) {
-            console.log('♻️ Closing temporary tab for proactive & reguler...');
-            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
-        }
-        if (ownBrowser) {
-            console.log('♻️ Closing headless browser for proactive & reguler to free VPS RAM...');
-            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
-        }
+        isScrapingNow = false;
+        await releaseScrapeResources(scrapedPage, { isShared: isPageShared, context: scrapeContext, fromOwnBrowser });
     }
 }
 
 export async function scrapeClosedTickets(closedUrl) {
     let scrapedPage = null;
     let isPageShared = true;
+    let scrapeContext = null;
+    let fromOwnBrowser = false;
     try {
-        const { page, isShared } = await getScrapePage();
+        const { page, isShared, context, fromOwnBrowser: ownFlag } = await getScrapePage();
         scrapedPage = page;
         isPageShared = isShared;
+        scrapeContext = context || null;
+        fromOwnBrowser = !!ownFlag;
         console.log(`🔍 [Closed Scraper] Navigating to URL: ${closedUrl}`);
-        await safeGoto(page, closedUrl, 60000);
+        const navOk = await safeGoto(page, closedUrl, 60000);
+        if (!navOk) throw new Error(`Failed to navigate to closed tickets URL: ${closedUrl}`);
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         // Check if we hit the login page
@@ -1654,6 +1750,9 @@ export async function scrapeClosedTickets(closedUrl) {
             }
         }
 
+        if (page.isClosed()) {
+            throw new Error('Page closed before reading closed tickets');
+        }
         const html = await page.content();
         const tickets = parseWorkOrders(html, { includeClosed: true });
         console.log(`📋 [Closed Scraper] Parsed ${tickets.length} closed tickets`);
@@ -1662,17 +1761,7 @@ export async function scrapeClosedTickets(closedUrl) {
         console.error('❌ [Closed Scraper] Error scraping closed tickets:', err.message);
         throw err;
     } finally {
-        if (scrapedPage) {
-            await saveCookies(scrapedPage).catch(e => console.log('⚠️ Failed to save cookies:', e.message));
-        }
-        if (scrapedPage && !isPageShared) {
-            console.log('♻️ Closing temporary tab for closed tickets...');
-            await scrapedPage.close().catch(e => console.log('⚠️ Failed to close temp tab:', e.message));
-        }
-        if (ownBrowser) {
-            console.log('♻️ Closing headless browser for closed tickets to free VPS RAM...');
-            await closeOwnBrowser().catch(e => console.log('⚠️ Failed to close ownBrowser:', e.message));
-        }
+        await releaseScrapeResources(scrapedPage, { isShared: isPageShared, context: scrapeContext, fromOwnBrowser });
     }
 }
 

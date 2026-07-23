@@ -34,6 +34,9 @@ export function generateTOTP(secret) {
 
 export async function isLoginPage(page) {
   try {
+    if (!page || (typeof page.isClosed === "function" && page.isClosed())) {
+      return false;
+    }
     const url = page.url();
     const content = await page.content().catch(() => "");
     /* javascript-obfuscator:disable */
@@ -55,12 +58,27 @@ export async function isLoginPage(page) {
 
 export async function isLoggedIn(page) {
   try {
+    if (!page || (typeof page.isClosed === "function" && page.isClosed())) {
+      return false;
+    }
     const content = await page.content().catch(() => "");
     return content.toLowerCase().includes("logout");
   } catch (error) {
     console.error("❌ Failed to check if logged in:", error.message);
     return false;
   }
+}
+
+/**
+ * Click/submit and wait for navigation together to avoid detached Frame errors
+ */
+async function clickAndWaitNavigation(page, actionFn, timeout = 60000) {
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "networkidle2", timeout }).catch((err) => {
+      console.warn(`⚠️ waitForNavigation ended: ${err.message}`);
+    }),
+    actionFn()
+  ]);
 }
 
 export async function handleTOTPPage(page) {
@@ -124,24 +142,27 @@ export async function handleTOTPPage(page) {
   console.log("📤 Submitting OTP...");
   /* javascript-obfuscator:disable */
   try {
-    const clicked = await searchContext.evaluate(() => {
-      const btn =
-        document.querySelector('button[type="submit"]') ||
-        document.querySelector('input[type="submit"]') ||
-        document.querySelector("#verify-btn");
-      if (btn) {
-        btn.click();
-        return true;
-      }
-      return false;
+    await clickAndWaitNavigation(page, async () => {
+      const clicked = await searchContext.evaluate(() => {
+        const btn =
+          document.querySelector('button[type="submit"]') ||
+          document.querySelector('input[type="submit"]') ||
+          document.querySelector("#verify-btn");
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      });
+      if (!clicked) await page.keyboard.press("Enter");
     });
-    if (!clicked) await page.keyboard.press("Enter");
   } catch (error) {
-    await page.keyboard.press("Enter");
+    console.warn(`⚠️ OTP submit navigation issue: ${error.message}`);
+    await page.keyboard.press("Enter").catch(() => {});
+    await new Promise((r) => setTimeout(r, 3000));
   }
   /* javascript-obfuscator:enable */
 
-  await new Promise((r) => setTimeout(r, 3000));
   console.log("✅ OTP submitted");
   return { success: true, message: "TOTP submitted" };
 }
@@ -151,6 +172,10 @@ export async function performAutoLogin(page) {
   if (!credentials) return { success: false, message: "Credentials not found" };
 
   try {
+    if (!page || (typeof page.isClosed === "function" && page.isClosed())) {
+      return { success: false, message: "Page is closed" };
+    }
+
     console.log("🔐 Starting auto-login...");
     console.log(`📍 Current URL: ${page.url()}`);
 
@@ -158,7 +183,7 @@ export async function performAutoLogin(page) {
       console.log(`🌐 Navigating to SSO login: ${credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login"}`);
       await page.goto(credentials.loginUrl || "https://insera-sso.telkom.co.id/jw/web/login", {
         waitUntil: "networkidle2",
-        timeout: 30000
+        timeout: 60000
       });
     }
 
@@ -197,9 +222,11 @@ export async function performAutoLogin(page) {
 
       console.log("📤 Submitting login form...");
       /* javascript-obfuscator:disable */
-      await page.evaluate(() => {
-        const btn = document.getElementById("fake-login");
-        if (btn) btn.click();
+      await clickAndWaitNavigation(page, async () => {
+        await page.evaluate(() => {
+          const btn = document.getElementById("fake-login");
+          if (btn) btn.click();
+        });
       });
       /* javascript-obfuscator:enable */
     } else {
@@ -215,15 +242,17 @@ export async function performAutoLogin(page) {
       await password.click({ clickCount: 3 });
       await password.type(credentials.password, { delay: 50 });
       console.log("📤 Submitting login form...");
-      await page.keyboard.press("Enter");
+      await clickAndWaitNavigation(page, async () => {
+        await page.keyboard.press("Enter");
+      });
     }
 
     console.log("⏳ Waiting login response...");
-    await new Promise((r) => setTimeout(r, 3500));
+    await new Promise((r) => setTimeout(r, 1500));
     if (await isLoginPage(page)) {
       console.log("🔐 Still on login/OTP page, trying OTP handler...");
       await handleTOTPPage(page);
-      await new Promise((r) => setTimeout(r, 3500));
+      await new Promise((r) => setTimeout(r, 1500));
     }
 
     const stillLogin = await isLoginPage(page);
