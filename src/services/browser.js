@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { rm } from 'fs/promises';
 import { isLoginPage, performAutoLogin, handleTOTPPage } from './auth.js';
+import { getWorkingProxy } from './proxy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,23 +30,31 @@ export async function launchBrowser(url = 'about:blank') {
         console.log('🚀 Launching browser...');
 
         const isHeadless = process.env.NODE_ENV === 'production' || process.platform === 'linux';
+        const launchArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--disable-features=Vulkan',
+            '--disable-gpu-sandbox',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--no-zygote',
+            '--js-flags="--max-old-space-size=256"',
+            '--window-size=1280,800'
+        ];
+
+        const proxyInfo = await getWorkingProxy();
+        if (proxyInfo?.chromeArg) {
+            launchArgs.push(proxyInfo.chromeArg);
+            console.log(`🛰️ [Proxy] Browser monitor via: ${proxyInfo.proxyUrl}`);
+        }
+
         browser = await puppeteer.launch({
             headless: isHeadless ? 'shell' : false, // Run headless in production/linux to save RAM
             userDataDir: userDataDir, // Persist session/cookies
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--disable-features=Vulkan',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-extensions',
-                '--no-zygote',
-                '--js-flags="--max-old-space-size=256"',
-                '--window-size=1280,800'
-            ],
+            args: launchArgs,
             defaultViewport: {
                 width: 1280,
                 height: 800

@@ -6,6 +6,7 @@ import { getBrowserInstance, getUserDataDir } from './browser.js';
 import { isLoginPage, performAutoLogin, handleTOTPPage, isLoggedIn } from './auth.js';
 import { getConfig, saveConfig, getWorkOrderById, updateWorkOrderCoordinates } from './database.js';
 import { formatToWIB, getWIBDate } from '../utils/time.js';
+import { getWorkingProxy, rotateProxy } from './proxy.js';
 
 let scrapeInterval = null;
 let isScrapingActive = false;
@@ -13,6 +14,7 @@ let isScrapingNow = false;
 let ownBrowser = null;
 let ownPage = null;
 let ownBrowserRefCount = 0;
+let ownBrowserProxyUrl = null;
 let scrapSheetInterval = null;
 let scrapSheetIntervalMs = 0;
 let scrapSheetStartedAt = null;
@@ -44,6 +46,21 @@ async function executeWithRetry(fn, retries = 3, delayMs = 5000) {
             const retriable = isRetriableNavError(error);
             console.error(`⚠️ Attempt ${i + 1}/${retries} failed: ${error.message}`);
             if (!retriable || i === retries - 1) throw error;
+
+            // Connection / timeout → rotate Indonesia proxy and relaunch browser
+            const msg = error.message || '';
+            if (
+                msg.includes('ERR_CONNECTION') ||
+                msg.includes('ERR_PROXY') ||
+                msg.includes('ERR_TUNNEL') ||
+                msg.includes('Navigation timeout') ||
+                msg.includes('Failed to navigate') ||
+                msg.includes('net::ERR_')
+            ) {
+                await rotateProxy(msg);
+                await closeOwnBrowser().catch(() => {});
+            }
+
             const wait = delayMs * Math.pow(2, i);
             console.log(`⏳ Retrying in ${wait / 1000}s...`);
             await new Promise(res => setTimeout(res, wait));
@@ -119,6 +136,7 @@ async function safeGoto(page, url, timeout = 90000) {
             }
             if (isRetriableNavError(err)) {
                 console.warn(`[Scraper] safeGoto giving up on ${url}: ${msg}`);
+                await rotateProxy(msg).catch(() => {});
                 return false;
             }
             throw err;
@@ -1056,6 +1074,10 @@ async function getScrapePage() {
     // On Pterodactyl, headless mode is normal (no Browser Monitor UI)
     console.log('ℹ️ Browser monitor tidak aktif — memakai headless browser + saved cookies/session.');
 
+    // Resolve Indonesia proxy (ProxyScrape free list) before launch/reuse
+    const proxyInfo = await getWorkingProxy();
+    const desiredProxyUrl = proxyInfo?.proxyUrl || null;
+
     // If ownBrowser is disconnected, clear it to force relaunch
     if (ownBrowser && !ownBrowser.isConnected()) {
         console.log('⚠️ Headless browser disconnected/crashed. Cleaning up to relaunch...');
@@ -1064,6 +1086,13 @@ async function getScrapePage() {
         } catch (e) {}
         ownBrowser = null;
         ownBrowserRefCount = 0;
+        ownBrowserProxyUrl = null;
+    }
+
+    // Proxy changed → must relaunch Chromium (proxy is a launch-time arg)
+    if (ownBrowser && ownBrowserProxyUrl !== desiredProxyUrl) {
+        console.log(`🔄 [Proxy] Proxy changed (${ownBrowserProxyUrl || 'direct'} → ${desiredProxyUrl || 'direct'}), relaunching browser...`);
+        await closeOwnBrowser().catch(() => {});
     }
 
     // 2. Create/reuse own headless browser
@@ -1079,32 +1108,44 @@ async function getScrapePage() {
             console.log('⚠️ WARNING: No chromium binary resolved. Puppeteer will try its default.');
         }
 
+        const launchArgs = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--disable-features=Vulkan',
+            '--disable-gpu-sandbox',
+            '--disable-software-rasterizer',
+            '--disable-widevine-cdm',
+            '--disable-component-update',
+            '--disable-bundled-ppapi-plugins',
+            '--disable-extensions',
+            '--no-zygote',
+            '--js-flags="--max-old-space-size=256"'
+        ];
+
+        if (proxyInfo?.chromeArg) {
+            launchArgs.push(proxyInfo.chromeArg);
+            console.log(`🛰️ [Proxy] Launching Chromium via: ${proxyInfo.proxyUrl}`);
+        } else {
+            console.warn('⚠️ [Proxy] No working Indonesia proxy — launching direct (likely blocked from DE/EU)');
+        }
+
         ownBrowser = await puppeteer.launch({
             headless: 'shell',
             executablePath: executablePath,
             userDataDir: userDataDir,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--disable-features=Vulkan',
-                '--disable-gpu-sandbox',
-                '--disable-software-rasterizer',
-                '--disable-widevine-cdm',
-                '--disable-component-update',
-                '--disable-bundled-ppapi-plugins',
-                '--disable-extensions',
-                '--no-zygote',
-                '--js-flags="--max-old-space-size=256"'
-            ],
+            args: launchArgs,
             defaultViewport: {
                 width: 1280,
                 height: 800
             }
         });
+        ownBrowserProxyUrl = desiredProxyUrl;
         console.log('✅ Headless browser ready');
+    } else if (desiredProxyUrl) {
+        console.log(`🛰️ [Proxy] Reusing browser via: ${desiredProxyUrl}`);
     }
 
     const { page, context } = await openIsolatedPage(ownBrowser);
@@ -1121,6 +1162,7 @@ async function closeOwnBrowser() {
         ownBrowser = null;
         ownPage = null;
         ownBrowserRefCount = 0;
+        ownBrowserProxyUrl = null;
         console.log('🛑 Headless browser closed');
     }
 }
@@ -1640,6 +1682,20 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
     let scrapeContext = null;
     let fromOwnBrowser = false;
     try {
+        return await executeWithRetry(async () => {
+        // Release previous attempt resources before opening a fresh page (retry safety)
+        if (scrapedPage || scrapeContext) {
+            await releaseScrapeResources(scrapedPage, {
+                isShared: isPageShared,
+                context: scrapeContext,
+                fromOwnBrowser
+            });
+            scrapedPage = null;
+            scrapeContext = null;
+            isPageShared = true;
+            fromOwnBrowser = false;
+        }
+
         console.log('🔍 [Scraper] Starting proactive & reguler scraping process...');
 
         const { page, isShared, context, fromOwnBrowser: ownFlag } = await getScrapePage();
@@ -1784,7 +1840,7 @@ export async function scrapeProactiveAndReguler(regulerBaseUrl, proactiveBaseUrl
             sqm: sqmTickets,
             unspec: unspecTickets
         };
-
+        }, 3, 5000);
     } finally {
         isScrapingNow = false;
         await releaseScrapeResources(scrapedPage, { isShared: isPageShared, context: scrapeContext, fromOwnBrowser });
